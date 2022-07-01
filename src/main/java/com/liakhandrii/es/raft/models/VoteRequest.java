@@ -1,22 +1,22 @@
 package com.liakhandrii.es.raft.models;
 
 public class VoteRequest {
-    private long candidateTerm;
-    private String candidateId;
+    private final long candidateTerm;
+    private final String candidateId;
 
     /**
      * Indicates the index of the last entry stored by the candidate
      */
-    private long lastEntryIndex;
+    private final Long lastEntryIndex;
 
     /**
      * Indicates the term of the last entry stored by the candidate
      */
-    private long lastEntryTerm;
+    private final Long lastEntryTerm;
 
-    private String messageId;
+    private final String messageId;
 
-    public VoteRequest(long candidateTerm, String candidateId, long lastEntryIndex, long lastEntryTerm, String messageId) {
+    public VoteRequest(long candidateTerm, String candidateId, Long lastEntryIndex, Long lastEntryTerm, String messageId) {
         this.candidateTerm = candidateTerm;
         this.candidateId = candidateId;
         this.lastEntryIndex = lastEntryIndex;
@@ -32,11 +32,11 @@ public class VoteRequest {
         return candidateId;
     }
 
-    public long getLastEntryIndex() {
+    public Long getLastEntryIndex() {
         return lastEntryIndex;
     }
 
-    public long getLastEntryTerm() {
+    public Long getLastEntryTerm() {
         return lastEntryTerm;
     }
 

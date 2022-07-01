@@ -1,6 +1,6 @@
 package com.liakhandrii.es.implementation.local.models;
 
-import com.liakhandrii.es.raft.nodes.NodeAccessor;
+import com.liakhandrii.es.raft.NodeAccessor;
 
 public class ClientResponse {
     private boolean success;

@@ -1,4 +1,4 @@
-package com.liakhandrii.es.raft.nodes;
+package com.liakhandrii.es.raft;
 
 import com.liakhandrii.es.implementation.local.models.ClientRequest;
 import com.liakhandrii.es.implementation.local.models.ClientResponse;
@@ -23,7 +23,7 @@ public class NodeCore<T> {
     /**
      * Value in milliseconds
      */
-    protected long heartbeatInterval = 500;
+    protected long heartbeatInterval = 50;
 
     /**
      * The current term of a node, we use this value to compare it with term of other nodes we receive requests from,
@@ -62,18 +62,19 @@ public class NodeCore<T> {
 
     private Map<String, Long> commitIndexes = new HashMap<>();
     private Map<String, Long> nextIndexes = new HashMap<>();
-    private long commitIndex = 0;
+    private Long commitIndex = null;
 
-    private List<Entry<T>> entries = new ArrayList<>();
+    public List<Entry<T>> entries = new ArrayList<>();
 
     /**
      * Creates a new NodeCore with an election timeout randomized from 400 to 599 ms
      * Always call this constructor in the subclasses
      */
     public NodeCore() {
-        electionTimeout = 4000 + (new Random().nextInt(2000));
+        electionTimeout = 250 + (new Random().nextInt(150));
         id = UUID.randomUUID().toString();
         otherNodes = new HashMap<>();
+        receivedVotes = new HashMap<>();
     }
 
     /**
@@ -92,7 +93,7 @@ public class NodeCore<T> {
         } else if (request.getCandidateTerm() < currentTerm) {
             // We don't vote for those whose term is lower than ours
             response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
-        } else if (request.getCandidateTerm() == currentTerm && request.getLastEntryIndex() < currentIndex()) {
+        } else if (request.getCandidateTerm() == currentTerm && currentIndex() != null && (request.getLastEntryIndex() == null || request.getLastEntryIndex() < currentIndex())) {
             // We also don't vote for those whose term is the same as ours, but the last entry index is lower
             response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
         } else {
@@ -125,6 +126,9 @@ public class NodeCore<T> {
     }
 
     protected void sendEntries(NodeAccessor nodeAccessor, boolean empty) {
+        if (rank != NodeRank.LEADER) {
+            return;
+        }
         AppendEntriesRequest<T> request;
 
         if (empty) {
@@ -139,7 +143,7 @@ public class NodeCore<T> {
 
 
             List<Entry<T>> newEntries;
-            if (currentIndex() >= nextNodeIndex) {
+            if (currentIndex() != null && currentIndex() >= nextNodeIndex) {
                 newEntries = entries.subList(nextNodeIndex.intValue(), entries.size());
             } else {
                 newEntries = new ArrayList<>();
@@ -168,8 +172,10 @@ public class NodeCore<T> {
 
         if (response.isSuccessful()) {
             Long matchingIndex = response.getLastEntryIndex();
-            commitIndexes.put(response.getResponderId(), matchingIndex);
-            nextIndexes.put(response.getResponderId(), matchingIndex + 1);
+            if (matchingIndex != null) {
+                commitIndexes.put(response.getResponderId(), matchingIndex);
+                nextIndexes.put(response.getResponderId(), matchingIndex + 1);
+            }
             calculateCommitIndex();
         }
 //        else {
@@ -184,6 +190,9 @@ public class NodeCore<T> {
     }
 
     private void calculateCommitIndex() {
+        if (currentIndex() == null) {
+            return;
+        }
         long potentialMajorityIndex = currentIndex();
         boolean indexInMajority = false;
         while (!indexInMajority && potentialMajorityIndex > 0) {
@@ -196,7 +205,7 @@ public class NodeCore<T> {
             }
         }
 
-        if (potentialMajorityIndex > commitIndex) {
+        if (indexInMajority && (commitIndex == null || potentialMajorityIndex > commitIndex)) {
             commitIndex = potentialMajorityIndex;
         }
     }
@@ -218,11 +227,9 @@ public class NodeCore<T> {
         NodeAccessor<T> accessor = otherNodes.get(request.getLeaderId());
 
         AppendEntriesResponse response = null;
-        if (request.getPreviousIndex() != null) {
+        if (request.getPreviousIndex() != null && currentIndex() != null) {
             boolean fail = false;
-            if (request.getPreviousIndex() < currentIndex()) {
-                fail = true;
-            } else if (request.getPreviousIndex() > currentIndex()) {
+            if (request.getPreviousIndex() > currentIndex()) {
                 fail = true;
             } else {
                 Entry<T> storedLog = entries.get(request.getPreviousIndex().intValue());
@@ -232,7 +239,7 @@ public class NodeCore<T> {
             }
 
             if (fail) {
-                response = AppendEntriesResponse.failed(currentTerm, currentIndex(), id, request.getMessageId(), FailureReason.DATA_INCONSISTENTCY);
+                response = AppendEntriesResponse.failed(currentTerm, currentIndex(), id, request.getMessageId(), FailureReason.DATA_INCONSISTENCY);
                 accessor.sendAppendEntriesResponse(response);
                 return;
             }
@@ -258,7 +265,7 @@ public class NodeCore<T> {
 
     public ClientResponse receiveClientRequest(ClientRequest<T> request) {
         if (rank == NodeRank.LEADER) {
-            entries.add(new Entry<>(request.getValue(), currentTerm, currentIndex() + 1));
+            entries.add(new Entry<>(request.getValue(), currentTerm, currentIndex() == null ? 0 : currentIndex() + 1));
             return new ClientResponse(true, null);
         } else {
             return new ClientResponse(false, currentLeader);
@@ -298,13 +305,16 @@ public class NodeCore<T> {
     }
 
     private void restartElectionTimer() {
-        electionTimer.cancel();
+        if (electionTimer != null) {
+            electionTimer.cancel();
+        }
         startElectionTimer();
     }
 
     protected void startElection() {
         setTerm(currentTerm + 1);
-        receivedVotes = new HashMap<>();
+        votedId = id;
+        receivedVotes.clear();
         receivedVotes.put(id, true);
         rank = NodeRank.CANDIDATE;
         otherNodes.values().forEach(this::sendVoteRequest);
@@ -322,9 +332,13 @@ public class NodeCore<T> {
         currentLeader = null;
         receivedVotes.clear();
         restartElectionTimer();
+
         otherNodes.values().forEach(nodeAccessor -> {
             commitIndexes.put(nodeAccessor.getNodeId(), 0L);
-            nextIndexes.put(nodeAccessor.getNodeId(), currentIndex() + 1);
+            nextIndexes.put(nodeAccessor.getNodeId(), commitIndex);
+        });
+
+        otherNodes.values().forEach(nodeAccessor -> {
             sendEntries(nodeAccessor, false);
         });
     }
@@ -357,13 +371,16 @@ public class NodeCore<T> {
      * A current index is needed for many decisions, it's better to have it easily accessible
      * @return the last entry index
      */
-    protected long currentIndex() {
-        return entries.size() - 1;
+    protected Long currentIndex() {
+        if (entries.size() == 0) {
+            return null;
+        }
+        return entries.size() - 1L;
     }
 
-    protected long lastEntryTerm() {
+    protected Long lastEntryTerm() {
         if (entries.isEmpty()) {
-            return 0;
+            return null;
         }
         return entries.get(entries.size() - 1).getTerm();
     }

@@ -1,4 +1,4 @@
-package com.liakhandrii.es.raft.nodes;
+package com.liakhandrii.es.raft;
 
 import com.liakhandrii.es.raft.models.AppendEntriesRequest;
 import com.liakhandrii.es.raft.models.AppendEntriesResponse;
