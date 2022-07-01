@@ -7,7 +7,7 @@ import com.liakhandrii.es.raft.models.*;
 
 import java.util.UUID;
 
-public class FakeNodeAccessor extends NodeAccessor<String> {
+public class MockNodeAccessor extends NodeAccessor<String> {
 
     public NodeCore<String> node;
     private boolean isNodeDown = false;
@@ -19,7 +19,7 @@ public class FakeNodeAccessor extends NodeAccessor<String> {
     public VoteRequest  lastVoteRequest  = null;
     public VoteResponse lastVoteResponse = null;
 
-    public FakeNodeAccessor(NodeCore<String> node) {
+    public MockNodeAccessor(NodeCore<String> node) {
         this.node = node;
         this.nodeId = node.getId();
     }

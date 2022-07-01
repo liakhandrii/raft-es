@@ -1,6 +1,5 @@
 package com.liakhandrii.es.raft;
 
-import com.liakhandrii.es.implementation.local.LocalNodeAccessor;
 import com.liakhandrii.es.implementation.local.models.ClientRequest;
 import com.liakhandrii.es.implementation.local.models.ClientResponse;
 
@@ -10,18 +9,18 @@ import java.util.stream.Collectors;
 
 public class LocalTest {
 
-    static private List<FakeNodeAccessor> accessors = new ArrayList<>();
-    static private Map<String, FakeNodeAccessor> accessorsMap = new HashMap<>();
+    static private List<MockNodeAccessor> accessors = new ArrayList<>();
+    static private Map<String, MockNodeAccessor> accessorsMap = new HashMap<>();
 
-    public static List<FakeNodeAccessor> generateNodes(int count, boolean startNodes) {
-        List<FakeNodeAccessor> accessors = new ArrayList<>();
+    public static List<MockNodeAccessor> generateNodes(int count, boolean startNodes) {
+        List<MockNodeAccessor> accessors = new ArrayList<>();
 
         for (int i = 0; i < count; i += 1) {
             NodeCore<String> node = new NodeCore<>();
-            accessors.add(new FakeNodeAccessor(node));
+            accessors.add(new MockNodeAccessor(node));
         }
 
-        accessorsMap = accessors.stream().collect(Collectors.toMap(FakeNodeAccessor::getNodeId, Function.identity()));
+        accessorsMap = accessors.stream().collect(Collectors.toMap(MockNodeAccessor::getNodeId, Function.identity()));
         accessors.forEach(nodeAccessor -> {
             for (int i = 0; i < count; i += 1) {
                 accessors.get(i).node.registerOtherNode(nodeAccessor);
@@ -55,7 +54,7 @@ public class LocalTest {
             @Override
             public void run() {
                 System.out.println("Client sends a request");
-                FakeNodeAccessor node = accessors.get(new Random().nextInt(5));
+                MockNodeAccessor node = accessors.get(new Random().nextInt(5));
                 ClientRequest request = new ClientRequest(UUID.randomUUID().toString());
                 ClientResponse response = node.sendClientRequest(request);
                 if (response != null && response.getRedirect() != null) {
@@ -75,7 +74,7 @@ public class LocalTest {
             @Override
             public void run() {
                 System.out.println("A node gets restarted");
-                FakeNodeAccessor node = accessors.get(new Random().nextInt(5));
+                MockNodeAccessor node = accessors.get(new Random().nextInt(5));
                 node.killNode();
                 try {
                     Thread.sleep(30000);

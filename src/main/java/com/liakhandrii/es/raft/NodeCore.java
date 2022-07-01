@@ -62,7 +62,7 @@ public class NodeCore<T> {
 
     private Map<String, Long> commitIndexes = new HashMap<>();
     private Map<String, Long> nextIndexes = new HashMap<>();
-    private Long commitIndex = null;
+    public Long commitIndex = null;
 
     public List<Entry<T>> entries = new ArrayList<>();
 
@@ -178,15 +178,6 @@ public class NodeCore<T> {
             }
             calculateCommitIndex();
         }
-//        else {
-//            if (response.getReason() != null) {
-//                if (response.getReason() == FailureReason.LEADER_TERM_OUTDATED) {
-//                    becomeFollower(null);
-//                } else if (response.getReason() == FailureReason.FOLLOWER_MISSING_ENTRIES) {
-//                    lastNodeIndexes.put(nodeAccessor.getNodeId(), response.getLastEntryIndex());
-//                }
-//            }
-//        }
     }
 
     private void calculateCommitIndex() {
