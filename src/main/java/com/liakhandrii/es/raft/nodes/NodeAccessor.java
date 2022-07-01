@@ -10,8 +10,11 @@ import java.util.Objects;
 abstract public class NodeAccessor<T> {
     protected String nodeId;
 
-    abstract public AppendEntriesResponse sendAppendEntriesRequest(AppendEntriesRequest<T> request);
-    abstract public VoteResponse sendVoteRequest(VoteRequest request);
+    abstract public void sendAppendEntriesRequest(AppendEntriesRequest<T> request);
+    abstract public void sendVoteRequest(VoteRequest request);
+
+    abstract public void sendAppendEntriesResponse(AppendEntriesResponse response);
+    abstract public void sendVoteResponse(VoteResponse response);
 
     public String getNodeId() {
         return nodeId;

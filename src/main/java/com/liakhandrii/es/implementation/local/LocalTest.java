@@ -2,6 +2,7 @@ package com.liakhandrii.es.implementation.local;
 
 import com.liakhandrii.es.implementation.local.models.ClientRequest;
 import com.liakhandrii.es.implementation.local.models.ClientResponse;
+import com.liakhandrii.es.raft.nodes.NodeCore;
 
 import java.util.*;
 import java.util.function.Function;
@@ -13,11 +14,11 @@ public class LocalTest {
     static private Map<String, LocalNodeAccessor> accessorsMap = new HashMap<>();
 
     public static void main(String[] args) {
-        LocalRaftNode node1 = new LocalRaftNode();
-        LocalRaftNode node2 = new LocalRaftNode();
-        LocalRaftNode node3 = new LocalRaftNode();
-        LocalRaftNode node4 = new LocalRaftNode();
-        LocalRaftNode node5 = new LocalRaftNode();
+        NodeCore<String> node1 = new NodeCore<>();
+        NodeCore<String> node2 = new NodeCore<>();
+        NodeCore<String> node3 = new NodeCore<>();
+        NodeCore<String> node4 = new NodeCore<>();
+        NodeCore<String> node5 = new NodeCore<>();
         accessors.add(new LocalNodeAccessor(node1));
         accessors.add(new LocalNodeAccessor(node2));
         accessors.add(new LocalNodeAccessor(node3));
@@ -77,26 +78,26 @@ public class LocalTest {
     }
 
     private static void startKillTimer() {
-        Timer timer = new Timer();
-        timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                System.out.println("A node gets restarted");
-                LocalNodeAccessor node = accessors.get(new Random().nextInt(5));
-                node.killNode();
-            }
-        }, 15000, 15000);
+//        Timer timer = new Timer();
+//        timer.schedule(new TimerTask() {
+//            @Override
+//            public void run() {
+//                System.out.println("A node gets restarted");
+//                LocalNodeAccessor node = accessors.get(new Random().nextInt(5));
+//                node.killNode();
+//            }
+//        }, 15000, 15000);
     }
 
     private static void startMonitorTimer() {
-        Timer timer = new Timer();
-        timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                accessors.forEach(localNodeAccessor -> {
-                    System.out.println(localNodeAccessor.node.getEntries());
-                });
-            }
-        }, 10000, 10000);
+//        Timer timer = new Timer();
+//        timer.schedule(new TimerTask() {
+//            @Override
+//            public void run() {
+//                accessors.forEach(localNodeAccessor -> {
+//                    System.out.println(localNodeAccessor.node.getEntries());
+//                });
+//            }
+//        }, 10000, 10000);
     }
 }

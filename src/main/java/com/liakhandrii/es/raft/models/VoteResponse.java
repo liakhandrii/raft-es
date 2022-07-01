@@ -4,11 +4,13 @@ public class VoteResponse {
     private long responderTerm;
     private boolean didReceiveVote;
     private String responderId;
+    private String messageId;
 
-    private VoteResponse(long responderTerm, boolean didReceiveVote, String responderId) {
+    private VoteResponse(long responderTerm, boolean didReceiveVote, String responderId, String messageId) {
         this.responderTerm = responderTerm;
         this.didReceiveVote = didReceiveVote;
         this.responderId = responderId;
+        this.messageId = messageId;
     }
 
     /**
@@ -16,8 +18,8 @@ public class VoteResponse {
      * @param responderTerm the current term of the node sending the response
      * @return a new VoteResponse object, configured per our needs
      */
-    public static VoteResponse voted(long responderTerm, String responderId) {
-        return new VoteResponse(responderTerm, true, responderId);
+    public static VoteResponse voted(long responderTerm, String responderId, String messageId) {
+        return new VoteResponse(responderTerm, true, responderId, messageId);
     }
 
     /**
@@ -25,8 +27,8 @@ public class VoteResponse {
      * @param responderTerm the current term of the node sending the response
      * @return a new VoteResponse object, configured per our needs
      */
-    public static VoteResponse rejected(long responderTerm, String responderId) {
-        return new VoteResponse(responderTerm, false, responderId);
+    public static VoteResponse rejected(long responderTerm, String responderId, String messageId) {
+        return new VoteResponse(responderTerm, false, responderId, messageId);
     }
 
     public long getResponderTerm() {
@@ -39,5 +41,9 @@ public class VoteResponse {
 
     public String getResponderId() {
         return responderId;
+    }
+
+    public String getMessageId() {
+        return messageId;
     }
 }

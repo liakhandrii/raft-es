@@ -6,13 +6,15 @@ public class AppendEntriesResponse {
     private boolean isSuccessful;
     private FailureReason reason;
     private String responderId;
+    private String messageId;
 
-    private AppendEntriesResponse(long responderTerm, long lastEntryIndex, boolean isSuccessful, FailureReason reason, String responderId) {
+    private AppendEntriesResponse(long responderTerm, long lastEntryIndex, boolean isSuccessful, FailureReason reason, String responderId, String messageId) {
         this.responderTerm = responderTerm;
         this.lastEntryIndex = lastEntryIndex;
         this.isSuccessful = isSuccessful;
         this.reason = reason;
         this.responderId = responderId;
+        this.messageId = messageId;
     }
 
     /**
@@ -20,8 +22,8 @@ public class AppendEntriesResponse {
      * @param responderTerm the current term of the node sending the response
      * @return a new AppendEntriesResponse object, configured per our needs
      */
-    public static AppendEntriesResponse succesful(long responderTerm, long lastEntryIndex, String responderId) {
-        return new AppendEntriesResponse(responderTerm, lastEntryIndex, true, null, responderId);
+    public static AppendEntriesResponse succesful(long responderTerm, long lastEntryIndex, String responderId, String messageId) {
+        return new AppendEntriesResponse(responderTerm, lastEntryIndex, true, null, responderId, messageId);
     }
 
     /**
@@ -30,8 +32,8 @@ public class AppendEntriesResponse {
      * @param reason the failure reason
      * @return a new AppendEntriesResponse object, configured per our needs
      */
-    public static AppendEntriesResponse failed(long responderTerm, long lastEntryIndex, String responderId, FailureReason reason) {
-        return new AppendEntriesResponse(responderTerm, lastEntryIndex, false, reason, responderId);
+    public static AppendEntriesResponse failed(long responderTerm, long lastEntryIndex, String responderId, String messageId, FailureReason reason) {
+        return new AppendEntriesResponse(responderTerm, lastEntryIndex, false, reason, responderId, messageId);
     }
 
     public long getResponderTerm() {
@@ -52,5 +54,9 @@ public class AppendEntriesResponse {
 
     public String getResponderId() {
         return responderId;
+    }
+
+    public String getMessageId() {
+        return messageId;
     }
 }

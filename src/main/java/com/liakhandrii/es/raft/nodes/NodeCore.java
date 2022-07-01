@@ -1,14 +1,15 @@
 package com.liakhandrii.es.raft.nodes;
 
+import com.liakhandrii.es.implementation.local.models.ClientRequest;
+import com.liakhandrii.es.implementation.local.models.ClientResponse;
 import com.liakhandrii.es.raft.models.*;
 
-import java.nio.charset.Charset;
 import java.util.*;
 
 /**
  * A class prototype destined to represent a basis of what each Raft node has to have to achieve minimum functionality.
  */
-abstract public class NodeCore<T> {
+public class NodeCore<T> {
     /**
      * This field indicates how the node should act, because it depends heavily on the role it currently employs
      */
@@ -63,11 +64,13 @@ abstract public class NodeCore<T> {
     private Map<String, Long> nextIndexes = new HashMap<>();
     private long commitIndex = 0;
 
+    private List<Entry<T>> entries = new ArrayList<>();
+
     /**
      * Creates a new NodeCore with an election timeout randomized from 400 to 599 ms
      * Always call this constructor in the subclasses
      */
-    protected NodeCore() {
+    public NodeCore() {
         electionTimeout = 4000 + (new Random().nextInt(2000));
         id = UUID.randomUUID().toString();
         otherNodes = new HashMap<>();
@@ -78,33 +81,39 @@ abstract public class NodeCore<T> {
      * @param request A request object with the sender's info
      * @return A reply with our decision and our info
      */
-    public VoteResponse receiveVoteRequest(VoteRequest request) {
-        // We don't vote if we voted on this term already
+    public void receiveVoteRequest(VoteRequest request) {
+        setTerm(request.getCandidateTerm());
+
+        VoteResponse response;
+
         if (votedId != null) {
-            return VoteResponse.rejected(currentTerm, id);
+            // We don't vote if we voted on this term already
+            response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
+        } else if (request.getCandidateTerm() < currentTerm) {
+            // We don't vote for those whose term is lower than ours
+            response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
+        } else if (request.getCandidateTerm() == currentTerm && request.getLastEntryIndex() < currentIndex()) {
+            // We also don't vote for those whose term is the same as ours, but the last entry index is lower
+            response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
+        } else {
+            votedId = request.getCandidateId();
+            response =  VoteResponse.voted(currentTerm, id, request.getMessageId());
         }
 
-        // We don't vote for those whose term is lower than ours
-        if (request.getCandidateTerm() <= currentTerm) {
-            return VoteResponse.rejected(currentTerm, id);
-        }
-
-        // We also don't vote for those whose term is the same as ours, but the last entry index is lower
-        if (request.getCandidateTerm() == currentTerm && request.getLastEntryIndex() < currentIndex()) {
-            return VoteResponse.rejected(currentTerm, id);
-        }
-
-        votedId = request.getCandidateId();
-        return VoteResponse.voted(currentTerm, id);
+        NodeAccessor<T> accessor = otherNodes.get(request.getCandidateId());
+        accessor.sendVoteResponse(response);
     }
 
-    protected void sendVoteRequest(NodeAccessor<T> nodeAccessor) {
+    public void sendVoteRequest(NodeAccessor<T> nodeAccessor) {
         if (rank != NodeRank.CANDIDATE) {
             return;
         }
 
-        VoteRequest request = new VoteRequest(currentTerm, id, currentIndex(), lastEntryTerm());
-        VoteResponse response = nodeAccessor.sendVoteRequest(request);
+        VoteRequest request = new VoteRequest(currentTerm, id, currentIndex(), lastEntryTerm(), UUID.randomUUID().toString());
+        nodeAccessor.sendVoteRequest(request);
+    }
+
+    public void processVoteRequestResponse(VoteResponse response) {
         if (response.getResponderTerm() > currentTerm) {
             becomeFollower(response.getResponderId());
         } else {
@@ -120,63 +129,66 @@ abstract public class NodeCore<T> {
 
         if (empty) {
             // Just sending a heartbeat
-            request = new AppendEntriesRequest<T>(currentTerm, id, null, null, new ArrayList<>(), null);
+            request = new AppendEntriesRequest<T>(currentTerm, id, null, null, new ArrayList<>(), null, UUID.randomUUID().toString());
         } else {
-            Long lastNodeIndex = lastNodeIndexes.get(nodeAccessor.getNodeId());
+            Long nextNodeIndex = nextIndexes.get(nodeAccessor.getNodeId());
 
-            if (lastNodeIndex == null) {
-                lastNodeIndex = -1L;
+            if (nextNodeIndex == null) {
+                nextNodeIndex = 0L;
             }
 
-            Entry<String> lastNodeEntry = null;
-            if (lastNodeIndex > 0 && lastNodeIndex < entries.size()) {
-                lastNodeEntry = entries.get(lastNodeIndex.intValue());
-            }
 
-            List<Entry<String>> newEntries;
-            if (lastNodeIndex < currentIndex()) {
-                newEntries = entries.subList(lastNodeIndex.intValue() + 1, entries.size());
+            List<Entry<T>> newEntries;
+            if (currentIndex() >= nextNodeIndex) {
+                newEntries = entries.subList(nextNodeIndex.intValue(), entries.size());
             } else {
                 newEntries = new ArrayList<>();
             }
 
-            if (lastNodeEntry != null) {
-                request = new AppendEntriesRequest<T>(currentTerm, id, lastNodeIndex, lastNodeEntry.getTerm(), newEntries, commitIndex());
-            } else {
-                request = new AppendEntriesRequest<T>(currentTerm, id, -1, currentTerm, newEntries, commitIndex());
+            Long lastNodeIndex = nextNodeIndex - 1;
+            if (lastNodeIndex < 0) {
+                lastNodeIndex = null;
             }
+
+            Long lastNodeTerm = null;
+            if (lastNodeIndex != null) {
+                lastNodeTerm = entries.get(lastNodeIndex.intValue()).getTerm();
+            }
+
+            request = new AppendEntriesRequest<T>(currentTerm, id, lastNodeIndex, lastNodeTerm, newEntries, commitIndex, UUID.randomUUID().toString());
         }
 
-
-        AppendEntriesResponse response = nodeAccessor.sendAppendEntriesRequest(request);
-        processEntriesResponse(response);
+        nodeAccessor.sendAppendEntriesRequest(request);
     }
 
     public void processEntriesResponse(AppendEntriesResponse response) {
+        if (rank != NodeRank.LEADER) {
+            return;
+        }
 
         if (response.isSuccessful()) {
             Long matchingIndex = response.getLastEntryIndex();
             commitIndexes.put(response.getResponderId(), matchingIndex);
             nextIndexes.put(response.getResponderId(), matchingIndex + 1);
             calculateCommitIndex();
-        } else {
-
         }
-
-        if (response.getReason() != null) {
-            if (response.getReason() == FailureReason.LEADER_TERM_OUTDATED) {
-                becomeFollower(null);
-            } else if (response.getReason() == FailureReason.FOLLOWER_MISSING_ENTRIES) {
-                lastNodeIndexes.put(nodeAccessor.getNodeId(), response.getLastEntryIndex());
-            }
-        }
+//        else {
+//            if (response.getReason() != null) {
+//                if (response.getReason() == FailureReason.LEADER_TERM_OUTDATED) {
+//                    becomeFollower(null);
+//                } else if (response.getReason() == FailureReason.FOLLOWER_MISSING_ENTRIES) {
+//                    lastNodeIndexes.put(nodeAccessor.getNodeId(), response.getLastEntryIndex());
+//                }
+//            }
+//        }
     }
 
     private void calculateCommitIndex() {
         long potentialMajorityIndex = currentIndex();
         boolean indexInMajority = false;
         while (!indexInMajority && potentialMajorityIndex > 0) {
-            long matchingNodes = commitIndexes.values().stream().filter(index -> index >= potentialMajorityIndex).count();
+            final long finalPotentialMajorityIndex = potentialMajorityIndex;
+            long matchingNodes = commitIndexes.values().stream().filter(index -> index >= finalPotentialMajorityIndex).count();
             // The +1 is we ourselves
             indexInMajority = (matchingNodes + 1) > majoritySize();
             if (!indexInMajority) {
@@ -195,31 +207,62 @@ abstract public class NodeCore<T> {
      * @param request
      * @return
      */
-    public AppendEntriesResponse receiveEntries(AppendEntriesRequest<T> request) {
-        restartElectionTimer();
+    public void receiveEntries(AppendEntriesRequest<T> request) {
+        setTerm(request.getLeaderTerm());
+
+        rank = NodeRank.FOLLOWER;
         currentLeader = otherNodes.get(request.getLeaderId());
-        return null;
+
+        restartElectionTimer();
+
+        NodeAccessor<T> accessor = otherNodes.get(request.getLeaderId());
+
+        AppendEntriesResponse response = null;
+        if (request.getPreviousIndex() != null) {
+            boolean fail = false;
+            if (request.getPreviousIndex() < currentIndex()) {
+                fail = true;
+            } else if (request.getPreviousIndex() > currentIndex()) {
+                fail = true;
+            } else {
+                Entry<T> storedLog = entries.get(request.getPreviousIndex().intValue());
+                if (storedLog.getTerm() != request.getPreviousTerm()) {
+                    fail = true;
+                }
+            }
+
+            if (fail) {
+                response = AppendEntriesResponse.failed(currentTerm, currentIndex(), id, request.getMessageId(), FailureReason.DATA_INCONSISTENTCY);
+                accessor.sendAppendEntriesResponse(response);
+                return;
+            }
+        }
+
+        if (request.getEntries().size() > 0) {
+            // We have to override the extra entries, obey the leader
+            if (request.getPreviousIndex() != null && request.getPreviousIndex() < currentIndex()) {
+                commitIndex = request.getCommitIndex();
+                entries = entries.subList(0, request.getPreviousIndex().intValue() + 1);
+            } else if (request.getPreviousIndex() == null) {
+                entries.clear();
+            }
+
+            entries.addAll(request.getEntries());
+
+            response = AppendEntriesResponse.succesful(currentTerm, currentIndex(), id, request.getMessageId());
+        } else {
+            response = AppendEntriesResponse.succesful(currentTerm, currentIndex(), id, request.getMessageId());
+        }
+        accessor.sendAppendEntriesResponse(response);
     }
 
-    /**
-     * We need to check if the entries request we receive is valid.
-     * @param request The request
-     * @return
-     */
-    protected FailureReason validateAppendRequest(AppendEntriesRequest<T> request) {
-        // This is a hard no-go, leaders must have a term >= that the current term of a follower
-        if (request.getLeaderTerm() < currentTerm) {
-            return FailureReason.LEADER_TERM_OUTDATED;
+    public ClientResponse receiveClientRequest(ClientRequest<T> request) {
+        if (rank == NodeRank.LEADER) {
+            entries.add(new Entry<>(request.getValue(), currentTerm, currentIndex() + 1));
+            return new ClientResponse(true, null);
+        } else {
+            return new ClientResponse(false, currentLeader);
         }
-
-        // The leader has to send older entries, because the follower lost some of the entries
-        if (request.getPreviousIndex() > currentIndex() + 1) {
-            return FailureReason.FOLLOWER_MISSING_ENTRIES;
-        }
-
-        // TODO: check if the entries are valid
-
-        return null;
     }
 
     public void startNode() {
@@ -281,7 +324,7 @@ abstract public class NodeCore<T> {
         restartElectionTimer();
         otherNodes.values().forEach(nodeAccessor -> {
             commitIndexes.put(nodeAccessor.getNodeId(), 0L);
-            nextIndexes.put(nodeAccessor.getNodeId(), currentIndex());
+            nextIndexes.put(nodeAccessor.getNodeId(), currentIndex() + 1);
             sendEntries(nodeAccessor, false);
         });
     }
@@ -317,7 +360,13 @@ abstract public class NodeCore<T> {
     protected long currentIndex() {
         return entries.size() - 1;
     }
-    abstract protected long lastEntryTerm();
+
+    protected long lastEntryTerm() {
+        if (entries.isEmpty()) {
+            return 0;
+        }
+        return entries.get(entries.size() - 1).getTerm();
+    }
 
     public String getId() {
         return id;

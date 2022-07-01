@@ -10,12 +10,12 @@ public class AppendEntriesRequest<T> {
     /**
      * Indicates the index of an entry preceding the entry we're sending now
      */
-    private long previousIndex;
+    private Long previousIndex;
 
     /**
      * Indicates the term of an entry preceding the entry we're sending now
      */
-    private long previousTerm;
+    private Long previousTerm;
 
     /**
      * All the new entries the receiver has to store, empty for a heartbeat
@@ -25,18 +25,21 @@ public class AppendEntriesRequest<T> {
     /**
      * Indicates the last entry to be known to be saved on a majority of nodes
      */
-    private long commitIndex;
+    private Long commitIndex;
 
-    public AppendEntriesRequest(long leaderTerm, String leaderId, Long previousIndex, Long previousTerm, List<Entry<T>> entries, Long commitIndex) {
+    private String messageId;
+
+    public AppendEntriesRequest(long leaderTerm, String leaderId, Long previousIndex, Long previousTerm, List<Entry<T>> entries, Long commitIndex, String messageId) {
         this.leaderTerm = leaderTerm;
         this.leaderId = leaderId;
         this.previousIndex = previousIndex;
         this.previousTerm = previousTerm;
         this.entries = entries;
         this.commitIndex = commitIndex;
+        this.messageId = messageId;
     }
 
-    public long getLeaderTerm() {
+    public Long getLeaderTerm() {
         return leaderTerm;
     }
 
@@ -44,11 +47,11 @@ public class AppendEntriesRequest<T> {
         return leaderId;
     }
 
-    public long getPreviousIndex() {
+    public Long getPreviousIndex() {
         return previousIndex;
     }
 
-    public long getPreviousTerm() {
+    public Long getPreviousTerm() {
         return previousTerm;
     }
 
@@ -56,8 +59,12 @@ public class AppendEntriesRequest<T> {
         return entries;
     }
 
-    public long getCommitIndex() {
+    public Long getCommitIndex() {
         return commitIndex;
+    }
+
+    public String getMessageId() {
+        return messageId;
     }
 }
 

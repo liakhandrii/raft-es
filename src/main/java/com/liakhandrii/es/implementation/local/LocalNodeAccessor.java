@@ -7,38 +7,48 @@ import com.liakhandrii.es.raft.models.AppendEntriesResponse;
 import com.liakhandrii.es.raft.models.VoteRequest;
 import com.liakhandrii.es.raft.models.VoteResponse;
 import com.liakhandrii.es.raft.nodes.NodeAccessor;
+import com.liakhandrii.es.raft.nodes.NodeCore;
 
 public class LocalNodeAccessor extends NodeAccessor<String> {
 
-    public LocalRaftNode node;
+    public NodeCore<String> node;
 
-    public LocalNodeAccessor(LocalRaftNode node) {
+    public LocalNodeAccessor(NodeCore<String> node) {
         this.node = node;
         this.nodeId = node.getId();
     }
 
     public void killNode() {
-        node.killNode();
+        // TODO
+//        node.killNode();
     }
 
     @Override
-    public AppendEntriesResponse sendAppendEntriesRequest(AppendEntriesRequest<String> request) {
+    public void sendAppendEntriesRequest(AppendEntriesRequest<String> request) {
         System.out.println("Leader " + request.getLeaderId().substring(0, 4) + " sends " + request.getEntries().size() + " entries to " + nodeId.substring(0, 4));
-        AppendEntriesResponse response = node.receiveEntries(request);
-        if (response.isSuccessful()) {
-            System.out.println("Node " + nodeId.substring(0, 4) + " accepted " + request.getEntries().size() + " new entries from " + request.getLeaderId().substring(0, 4));
-        } else {
-            System.out.println("Node " + nodeId.substring(0, 4) + " rejects. Reason: " + response.getReason());
-        }
-        return response;
+        node.receiveEntries(request);
     }
 
     @Override
-    public VoteResponse sendVoteRequest(VoteRequest request) {
+    public void sendAppendEntriesResponse(AppendEntriesResponse response) {
+        if (response.isSuccessful()) {
+            System.out.println("Node " + response.getResponderId().substring(0, 4) + " accepted new entries from " + nodeId.substring(0, 4));
+        } else {
+            System.out.println("Node " + response.getResponderId().substring(0, 4) + " rejects. Reason: " + response.getReason());
+        }
+        node.processEntriesResponse(response);
+    }
+
+    @Override
+    public void sendVoteRequest(VoteRequest request) {
         System.out.println("Candidate " + request.getCandidateId().substring(0, 4) + " term " + request.getCandidateTerm() + " sends a vote request to " + nodeId.substring(0, 4) + " at " + System.currentTimeMillis());
-        VoteResponse response = node.receiveVoteRequest(request);
-        System.out.println("Node " + nodeId.substring(0, 4) + " votes " + response.didReceiveVote());
-        return response;
+        node.receiveVoteRequest(request);
+    }
+
+    @Override
+    public void sendVoteResponse(VoteResponse response) {
+        System.out.println("Node " + response.getResponderId().substring(0, 4) + " votes " + response.didReceiveVote());
+        node.processVoteRequestResponse(response);
     }
 
     public ClientResponse sendClientRequest(ClientRequest request) {

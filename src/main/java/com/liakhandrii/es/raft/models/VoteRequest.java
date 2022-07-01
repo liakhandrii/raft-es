@@ -14,11 +14,14 @@ public class VoteRequest {
      */
     private long lastEntryTerm;
 
-    public VoteRequest(long candidateTerm, String candidateId, long lastEntryIndex, long lastEntryTerm) {
+    private String messageId;
+
+    public VoteRequest(long candidateTerm, String candidateId, long lastEntryIndex, long lastEntryTerm, String messageId) {
         this.candidateTerm = candidateTerm;
         this.candidateId = candidateId;
         this.lastEntryIndex = lastEntryIndex;
         this.lastEntryTerm = lastEntryTerm;
+        this.messageId = messageId;
     }
 
     public long getCandidateTerm() {
@@ -35,6 +38,10 @@ public class VoteRequest {
 
     public long getLastEntryTerm() {
         return lastEntryTerm;
+    }
+
+    public String getMessageId() {
+        return messageId;
     }
 }
 
