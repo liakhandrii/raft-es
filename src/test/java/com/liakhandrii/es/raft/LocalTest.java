@@ -9,8 +9,8 @@ import java.util.stream.Collectors;
 
 public class LocalTest {
 
-    static private List<MockNodeAccessor> accessors = new ArrayList<>();
-    static private Map<String, MockNodeAccessor> accessorsMap = new HashMap<>();
+    static public List<MockNodeAccessor> accessors = new ArrayList<>();
+    static public Map<String, MockNodeAccessor> accessorsMap = new HashMap<>();
 
     public static List<MockNodeAccessor> generateNodes(int count, boolean startNodes) {
         List<MockNodeAccessor> accessors = new ArrayList<>();
@@ -48,7 +48,7 @@ public class LocalTest {
         System.out.println("running");
     }
 
-    private static void startClientTimer() {
+    public static void startClientTimer() {
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
@@ -68,7 +68,7 @@ public class LocalTest {
         }, 2000, 2000);
     }
 
-    private static void startKillTimer() {
+    public static void startKillTimer() {
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
@@ -86,7 +86,7 @@ public class LocalTest {
         }, 15000, 150000);
     }
 
-    private static void startMonitorTimer() {
+    public static void startMonitorTimer() {
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override

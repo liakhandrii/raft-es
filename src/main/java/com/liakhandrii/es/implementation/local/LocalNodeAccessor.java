@@ -43,7 +43,7 @@ public class LocalNodeAccessor extends NodeAccessor<String> {
     @Override
     public void sendVoteResponse(VoteResponse response) {
         System.out.println("Node " + response.getResponderId().substring(0, 4) + " votes " + response.didReceiveVote());
-        node.processVoteRequestResponse(response);
+        node.processVoteResponse(response);
     }
 
     public ClientResponse sendClientRequest(ClientRequest request) {

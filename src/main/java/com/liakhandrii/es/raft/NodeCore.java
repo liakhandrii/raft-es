@@ -6,82 +6,85 @@ import com.liakhandrii.es.raft.models.*;
 
 import java.util.*;
 
-/**
- * A class prototype destined to represent a basis of what each Raft node has to have to achieve minimum functionality.
- */
 public class NodeCore<T> {
-    /**
-     * This field indicates how the node should act, because it depends heavily on the role it currently employs
-     */
-    protected NodeRank rank = NodeRank.FOLLOWER;
 
+    protected String id;
+    protected NodeRank rank = NodeRank.FOLLOWER;
+    protected long currentTerm = 0;
     /**
      * Value in milliseconds, should be randomized
      */
     protected long electionTimeout;
-
     /**
      * Value in milliseconds
      */
     protected long heartbeatInterval = 50;
 
     /**
-     * The current term of a node, we use this value to compare it with term of other nodes we receive requests from,
-     * and react accordingly if we're behind on a term
-     */
-    protected long currentTerm = 0;
-
-    /**
-     * We store which candidate we voted for on this term, not to vote twice on the same term
-     */
-    protected String votedId = null;
-
-    protected NodeAccessor<T> currentLeader;
-
-    /**
-     * This timer fires on an interval, unless it's reset by a heartbeat
-     */
-    protected Timer electionTimer;
-
-    /**
-     * This timer fires regularly on an interval
-     */
-    protected Timer heartbeatTimer;
-
-    /**
-     * Provides a way of identyfying this node among others
-     */
-    protected String id;
-
-    /**
      * Keeps references to other nodes in the cluster
      */
     protected Map<String, NodeAccessor<T>> otherNodes;
-
-    protected Map<String, Boolean> receivedVotes;
-
-    private Map<String, Long> commitIndexes = new HashMap<>();
-    private Map<String, Long> nextIndexes = new HashMap<>();
-    public Long commitIndex = null;
-
-    public List<Entry<T>> entries = new ArrayList<>();
+    protected NodeAccessor<T> currentLeader;
 
     /**
-     * Creates a new NodeCore with an election timeout randomized from 400 to 599 ms
-     * Always call this constructor in the subclasses
+     * Used to prevent the node from giving multiple votes
+     */
+    protected String votedId = null;
+    protected Map<String, Boolean> receivedVotes;
+
+    protected List<Entry<T>> entries = new ArrayList<>();
+    protected Long commitIndex = null;
+    protected final Map<String, Long> commitIndexes = new HashMap<>();
+    protected final Map<String, Long> nextIndexes = new HashMap<>();
+
+    protected Timer electionTimer;
+    protected Timer heartbeatTimer;
+
+    /**
+     * Creates a new NodeCore with an election timeout randomized from 250 to 400 ms
+     * Always call this constructor in the subclasses, unless you do the initialization yourself.
      */
     public NodeCore() {
-        electionTimeout = 250 + (new Random().nextInt(150));
+        electionTimeout = 250 + (new Random().nextInt(151));
         id = UUID.randomUUID().toString();
         otherNodes = new HashMap<>();
         receivedVotes = new HashMap<>();
     }
 
     /**
-     * This is common node functionality, so it's implemented in the NodeCore.
-     * @param request A request object with the sender's info
-     * @return A reply with our decision and our info
+     * The node doesn't start its operation immediately after running the constructor. Use this method when you're ready to start using the node.
      */
+    public void startNode() {
+        startElectionTimer();
+        startHeartbeatTimer();
+    }
+
+    public void registerOtherNode(NodeAccessor<T> otherNode) {
+        if (!otherNode.getNodeId().equals(getId())) {
+            this.otherNodes.put(otherNode.getNodeId(), otherNode);
+        }
+    }
+
+    public void sendVoteRequest(NodeAccessor<T> nodeAccessor) {
+        if (rank != NodeRank.CANDIDATE) {
+            return;
+        }
+
+        VoteRequest request = new VoteRequest(currentTerm, id, getCurrentIndex(), getLastEntryTerm(), UUID.randomUUID().toString());
+        nodeAccessor.sendVoteRequest(request);
+    }
+
+    public void processVoteResponse(VoteResponse response) {
+        if (response.getResponderTerm() > currentTerm) {
+            becomeFollower(response.getResponderId());
+        } else {
+            receivedVotes.put(response.getResponderId(), response.didReceiveVote());
+            if (countVotes() > majoritySize()) {
+                becomeLeader();
+            }
+        }
+    }
+
     public void receiveVoteRequest(VoteRequest request) {
         setTerm(request.getCandidateTerm());
 
@@ -93,7 +96,7 @@ public class NodeCore<T> {
         } else if (request.getCandidateTerm() < currentTerm) {
             // We don't vote for those whose term is lower than ours
             response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
-        } else if (request.getCandidateTerm() == currentTerm && currentIndex() != null && (request.getLastEntryIndex() == null || request.getLastEntryIndex() < currentIndex())) {
+        } else if (request.getCandidateTerm() == currentTerm && getCurrentIndex() != null && (request.getLastEntryIndex() == null || request.getLastEntryIndex() < getCurrentIndex())) {
             // We also don't vote for those whose term is the same as ours, but the last entry index is lower
             response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
         } else {
@@ -105,27 +108,12 @@ public class NodeCore<T> {
         accessor.sendVoteResponse(response);
     }
 
-    public void sendVoteRequest(NodeAccessor<T> nodeAccessor) {
-        if (rank != NodeRank.CANDIDATE) {
-            return;
-        }
-
-        VoteRequest request = new VoteRequest(currentTerm, id, currentIndex(), lastEntryTerm(), UUID.randomUUID().toString());
-        nodeAccessor.sendVoteRequest(request);
-    }
-
-    public void processVoteRequestResponse(VoteResponse response) {
-        if (response.getResponderTerm() > currentTerm) {
-            becomeFollower(response.getResponderId());
-        } else {
-            receivedVotes.put(response.getResponderId(), response.didReceiveVote());
-            if (countVotes() > majoritySize()) {
-                becomeLeader();
-            }
-        }
-    }
-
-    protected void sendEntries(NodeAccessor nodeAccessor, boolean empty) {
+    /**
+     * This method either sends an empty heartbeat or sends the required new entries to the specified follower
+     * @param nodeAccessor follower accessor
+     * @param empty if the request should just be an empty heartbeat
+     */
+    public void sendEntries(NodeAccessor<T> nodeAccessor, boolean empty) {
         if (rank != NodeRank.LEADER) {
             return;
         }
@@ -133,7 +121,7 @@ public class NodeCore<T> {
 
         if (empty) {
             // Just sending a heartbeat
-            request = new AppendEntriesRequest<T>(currentTerm, id, null, null, new ArrayList<>(), null, UUID.randomUUID().toString());
+            request = new AppendEntriesRequest<>(currentTerm, id, null, null, new ArrayList<>(), null, UUID.randomUUID().toString());
         } else {
             Long nextNodeIndex = nextIndexes.get(nodeAccessor.getNodeId());
 
@@ -141,9 +129,8 @@ public class NodeCore<T> {
                 nextNodeIndex = 0L;
             }
 
-
             List<Entry<T>> newEntries;
-            if (currentIndex() != null && currentIndex() >= nextNodeIndex) {
+            if (getCurrentIndex() != null && getCurrentIndex() >= nextNodeIndex) {
                 newEntries = entries.subList(nextNodeIndex.intValue(), entries.size());
             } else {
                 newEntries = new ArrayList<>();
@@ -159,7 +146,7 @@ public class NodeCore<T> {
                 lastNodeTerm = entries.get(lastNodeIndex.intValue()).getTerm();
             }
 
-            request = new AppendEntriesRequest<T>(currentTerm, id, lastNodeIndex, lastNodeTerm, newEntries, commitIndex, UUID.randomUUID().toString());
+            request = new AppendEntriesRequest<>(currentTerm, id, lastNodeIndex, lastNodeTerm, newEntries, commitIndex, UUID.randomUUID().toString());
         }
 
         nodeAccessor.sendAppendEntriesRequest(request);
@@ -180,36 +167,11 @@ public class NodeCore<T> {
         }
     }
 
-    private void calculateCommitIndex() {
-        if (currentIndex() == null) {
-            return;
-        }
-        long potentialMajorityIndex = currentIndex();
-        boolean indexInMajority = false;
-        while (!indexInMajority && potentialMajorityIndex > 0) {
-            final long finalPotentialMajorityIndex = potentialMajorityIndex;
-            long matchingNodes = commitIndexes.values().stream().filter(index -> index >= finalPotentialMajorityIndex).count();
-            // The +1 is we ourselves
-            indexInMajority = (matchingNodes + 1) > majoritySize();
-            if (!indexInMajority) {
-                potentialMajorityIndex -= 1;
-            }
-        }
-
-        if (indexInMajority && (commitIndex == null || potentialMajorityIndex > commitIndex)) {
-            commitIndex = potentialMajorityIndex;
-        }
-    }
-
     /**
-     * This is an entry point to receive heartbeats or entries of any type.
-     * Call this method in all subclasses
-     * @param request
-     * @return
+     * Become follower, receive new entries, analyze their validity, store.
      */
     public void receiveEntries(AppendEntriesRequest<T> request) {
         setTerm(request.getLeaderTerm());
-
         rank = NodeRank.FOLLOWER;
         currentLeader = otherNodes.get(request.getLeaderId());
 
@@ -217,10 +179,10 @@ public class NodeCore<T> {
 
         NodeAccessor<T> accessor = otherNodes.get(request.getLeaderId());
 
-        AppendEntriesResponse response = null;
-        if (request.getPreviousIndex() != null && currentIndex() != null) {
+        AppendEntriesResponse response;
+        if (request.getPreviousIndex() != null && getCurrentIndex() != null) {
             boolean fail = false;
-            if (request.getPreviousIndex() > currentIndex()) {
+            if (request.getPreviousIndex() > getCurrentIndex()) {
                 fail = true;
             } else {
                 Entry<T> storedLog = entries.get(request.getPreviousIndex().intValue());
@@ -230,7 +192,7 @@ public class NodeCore<T> {
             }
 
             if (fail) {
-                response = AppendEntriesResponse.failed(currentTerm, currentIndex(), id, request.getMessageId(), FailureReason.DATA_INCONSISTENCY);
+                response = AppendEntriesResponse.failed(currentTerm, getCurrentIndex(), id, request.getMessageId(), FailureReason.DATA_INCONSISTENCY);
                 accessor.sendAppendEntriesResponse(response);
                 return;
             }
@@ -238,7 +200,7 @@ public class NodeCore<T> {
 
         if (request.getEntries().size() > 0) {
             // We have to override the extra entries, obey the leader
-            if (request.getPreviousIndex() != null && request.getPreviousIndex() < currentIndex()) {
+            if (request.getPreviousIndex() != null && request.getPreviousIndex() < getCurrentIndex()) {
                 commitIndex = request.getCommitIndex();
                 entries = entries.subList(0, request.getPreviousIndex().intValue() + 1);
             } else if (request.getPreviousIndex() == null) {
@@ -247,59 +209,19 @@ public class NodeCore<T> {
 
             entries.addAll(request.getEntries());
 
-            response = AppendEntriesResponse.succesful(currentTerm, currentIndex(), id, request.getMessageId());
-        } else {
-            response = AppendEntriesResponse.succesful(currentTerm, currentIndex(), id, request.getMessageId());
         }
+
+        response = AppendEntriesResponse.succesful(currentTerm, getCurrentIndex(), id, request.getMessageId());
         accessor.sendAppendEntriesResponse(response);
     }
 
     public ClientResponse receiveClientRequest(ClientRequest<T> request) {
         if (rank == NodeRank.LEADER) {
-            entries.add(new Entry<>(request.getValue(), currentTerm, currentIndex() == null ? 0 : currentIndex() + 1));
+            entries.add(new Entry<>(request.getValue(), currentTerm, getCurrentIndex() == null ? 0 : getCurrentIndex() + 1));
             return new ClientResponse(true, null);
         } else {
             return new ClientResponse(false, currentLeader);
         }
-    }
-
-    public void startNode() {
-        startElectionTimer();
-        startHeartbeatTimer();
-    }
-
-    private int countVotes() {
-        return (int) receivedVotes.values().stream().filter(vote -> vote).count();
-    }
-
-    private int majoritySize() {
-        return (otherNodes.size() + 1) / 2;
-    }
-
-    /**
-     * Called when the node didn't receive a heartbeat, so it has to start an election.
-     */
-    private void electionTimerFired() {
-        if (rank != NodeRank.LEADER) {
-            startElection();
-        }
-    }
-
-    private void startElectionTimer() {
-        TimerTask electionTask = new TimerTask() {
-            public void run() {
-                electionTimerFired();
-            }
-        };
-        electionTimer = new Timer();
-        electionTimer.scheduleAtFixedRate(electionTask, electionTimeout, electionTimeout);
-    }
-
-    private void restartElectionTimer() {
-        if (electionTimer != null) {
-            electionTimer.cancel();
-        }
-        startElectionTimer();
     }
 
     protected void startElection() {
@@ -329,9 +251,33 @@ public class NodeCore<T> {
             nextIndexes.put(nodeAccessor.getNodeId(), commitIndex);
         });
 
-        otherNodes.values().forEach(nodeAccessor -> {
-            sendEntries(nodeAccessor, false);
-        });
+        otherNodes.values().forEach(nodeAccessor -> sendEntries(nodeAccessor, false));
+    }
+
+    /**
+     * Called when the node didn't receive a heartbeat, so it has to start an election.
+     */
+    private void electionTimerFired() {
+        if (rank != NodeRank.LEADER) {
+            startElection();
+        }
+    }
+
+    private void startElectionTimer() {
+        TimerTask electionTask = new TimerTask() {
+            public void run() {
+                electionTimerFired();
+            }
+        };
+        electionTimer = new Timer();
+        electionTimer.scheduleAtFixedRate(electionTask, electionTimeout, electionTimeout);
+    }
+
+    private void restartElectionTimer() {
+        if (electionTimer != null) {
+            electionTimer.cancel();
+        }
+        startElectionTimer();
     }
 
     private void startHeartbeatTimer() {
@@ -346,30 +292,51 @@ public class NodeCore<T> {
 
     private void heartbeatTimerFired() {
         if (rank == NodeRank.LEADER) {
-            otherNodes.values().forEach(nodeAccessor -> {
-                sendEntries(nodeAccessor, false);
-            });
+            otherNodes.values().forEach(nodeAccessor -> sendEntries(nodeAccessor, false));
         }
     }
 
-    public void registerOtherNode(NodeAccessor<T> otherNode) {
-        if (!otherNode.getNodeId().equals(getId())) {
-            this.otherNodes.put(otherNode.getNodeId(), otherNode);
+    private void calculateCommitIndex() {
+        if (getCurrentIndex() == null) {
+            return;
         }
+        long potentialMajorityIndex = getCurrentIndex();
+        boolean indexInMajority = false;
+        while (!indexInMajority && potentialMajorityIndex > 0) {
+            final long finalPotentialMajorityIndex = potentialMajorityIndex;
+            long matchingNodes = commitIndexes.values().stream().filter(index -> index >= finalPotentialMajorityIndex).count();
+            // The +1 is we ourselves
+            indexInMajority = (matchingNodes + 1) > majoritySize();
+            if (!indexInMajority) {
+                potentialMajorityIndex -= 1;
+            }
+        }
+
+        if (indexInMajority && (commitIndex == null || potentialMajorityIndex > commitIndex)) {
+            commitIndex = potentialMajorityIndex;
+        }
+    }
+
+    private int countVotes() {
+        return (int) receivedVotes.values().stream().filter(vote -> vote).count();
+    }
+
+    private int majoritySize() {
+        return (otherNodes.size() + 1) / 2;
     }
 
     /**
-     * A current index is needed for many decisions, it's better to have it easily accessible
+     * I went for a null value for an empty state, because it allows to catch problems much easier than something like -1
      * @return the last entry index
      */
-    protected Long currentIndex() {
+    protected Long getCurrentIndex() {
         if (entries.size() == 0) {
             return null;
         }
         return entries.size() - 1L;
     }
 
-    protected Long lastEntryTerm() {
+    protected Long getLastEntryTerm() {
         if (entries.isEmpty()) {
             return null;
         }

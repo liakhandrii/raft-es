@@ -19,6 +19,8 @@ public class MockNodeAccessor extends NodeAccessor<String> {
     public VoteRequest  lastVoteRequest  = null;
     public VoteResponse lastVoteResponse = null;
 
+    public ClientResponse lastClientResponse = null;
+
     public MockNodeAccessor(NodeCore<String> node) {
         this.node = node;
         this.nodeId = node.getId();
@@ -33,7 +35,7 @@ public class MockNodeAccessor extends NodeAccessor<String> {
     }
 
     public Entry<String> addRandomEntry() {
-        Long index = node.currentIndex() == null ? -1 : node.currentIndex();
+        Long index = node.getCurrentIndex() == null ? -1 : node.getCurrentIndex();
         Entry<String> entry = new Entry<>(UUID.randomUUID().toString().substring(0, 4), node.currentTerm, index + 1);
         node.entries.add(entry);
         return entry;
@@ -72,13 +74,14 @@ public class MockNodeAccessor extends NodeAccessor<String> {
         lastVoteResponse = response;
         if (isNodeDown) { return; }
         System.out.println("Node " + response.getResponderId().substring(0, 4) + " votes " + response.didReceiveVote());
-        node.processVoteRequestResponse(response);
+        node.processVoteResponse(response);
     }
 
     public ClientResponse sendClientRequest(ClientRequest request) {
-        if (isNodeDown) { return null; }
         System.out.println("Node " + nodeId.substring(0, 4) + " received a client request");
         ClientResponse response = node.receiveClientRequest(request);
+        lastClientResponse = response;
+        if (isNodeDown) { return null; }
         if (response.getRedirect() != null) {
             System.out.println("Node " + nodeId.substring(0, 4) + " responds with redirect: " + response.getRedirect().getNodeId().substring(0, 4));
         } else {

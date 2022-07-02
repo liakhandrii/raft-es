@@ -1,10 +1,9 @@
 package com.liakhandrii.es.raft;
 
 
-import com.liakhandrii.es.raft.models.AppendEntriesRequest;
-import com.liakhandrii.es.raft.models.Entry;
-import com.liakhandrii.es.raft.models.VoteRequest;
-import com.liakhandrii.es.raft.models.VoteResponse;
+import com.liakhandrii.es.implementation.local.models.ClientRequest;
+import com.liakhandrii.es.implementation.local.models.ClientResponse;
+import com.liakhandrii.es.raft.models.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,12 +25,25 @@ class NodeUnitTests {
     @BeforeEach
     void setUp() {
         accessors = LocalTest.generateNodes(5, false);
-        // It's important that nodes stay disabled, so we can start them only when we need to test time-related things
+        // It's important that nodes stay disabled, so no random side effects happen when we are doing the unit tests.
     }
 
     @AfterEach
     void tearDown() {
         accessors = null;
+    }
+
+    @Test
+    void testInitValues() {
+        NodeCore<String> node = new NodeCore<>();
+
+        assertEquals(NodeRank.FOLLOWER, node.rank);
+        assertEquals(0, node.currentTerm);
+        assertEquals(50, node.heartbeatInterval);
+        assertTrue(250 <= node.electionTimeout && 400 >= node.electionTimeout);
+        assertEquals(0, node.otherNodes.size());
+        assertEquals(0, node.receivedVotes.size());
+
     }
 
     @Test
@@ -101,11 +113,6 @@ class NodeUnitTests {
         assertEquals(3, request.getCandidateTerm());
         assertEquals(2, request.getLastEntryIndex());
         assertEquals(2, request.getLastEntryTerm());
-    }
-
-    @Test
-    void processVoteRequestResponse() {
-        // TODO: this is an integration test
     }
 
     @Test
@@ -208,43 +215,120 @@ class NodeUnitTests {
     }
 
     @Test
-    void receiveClientRequest() {
-        
-    }
-
-    @Test
-    void startNode() {
-    }
-
-    @Test
     void startElection() {
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+        // We need to kill the other nodes so we can reliably check the startElection method
+        for (MockNodeAccessor accessor: accessors) {
+            if (!accessor.nodeId.equals(nodeAccessor.nodeId)) {
+                accessor.killNode();
+            }
+        }
+        long previousTerm = nodeAccessor.node.currentTerm;
+        nodeAccessor.node.startElection();
+
+        assertEquals(previousTerm + 1, nodeAccessor.node.currentTerm);
+        assertEquals(NodeRank.CANDIDATE, nodeAccessor.node.rank);
+        assertEquals(1, nodeAccessor.node.receivedVotes.size());
+        assertNotNull(nodeAccessor.node.votedId);
     }
 
     @Test
     void becomeFollower() {
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+        MockNodeAccessor fakeLeader = accessors.get(1);
+
+        nodeAccessor.node.becomeFollower(fakeLeader.nodeId);
+
+        assertEquals(NodeRank.FOLLOWER, nodeAccessor.node.rank);
+        assertEquals(fakeLeader, nodeAccessor.node.currentLeader);
     }
 
     @Test
     void becomeLeader() {
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+        // We need to kill the other nodes so we can reliably check the method
+        for (MockNodeAccessor accessor: accessors) {
+            if (!accessor.nodeId.equals(nodeAccessor.nodeId)) {
+                accessor.killNode();
+            }
+        }
+
+        nodeAccessor.node.becomeLeader();
+
+        assertEquals(NodeRank.LEADER, nodeAccessor.node.rank);
+        assertNull(nodeAccessor.node.currentLeader);
+        assertEquals(0, nodeAccessor.node.receivedVotes.size());
     }
 
     @Test
     void registerOtherNode() {
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+        NodeCore<String> newNode = new NodeCore<>();
+        MockNodeAccessor newNodeAccessor = new MockNodeAccessor(newNode);
+
+        nodeAccessor.node.registerOtherNode(newNodeAccessor);
+        assertEquals(accessors.size(), nodeAccessor.node.otherNodes.size());
+
+        nodeAccessor.node.registerOtherNode(nodeAccessor);
+        assertEquals(accessors.size(), nodeAccessor.node.otherNodes.size());
     }
 
     @Test
     void currentIndex() {
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+
+        assertNull(nodeAccessor.node.getCurrentIndex());
+
+        nodeAccessor.addRandomEntry();
+
+        assertEquals(0, nodeAccessor.node.getCurrentIndex());
     }
 
     @Test
     void lastEntryTerm() {
-    }
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+        nodeAccessor.node.setTerm(1);
 
-    @Test
-    void getId() {
+        assertNull(nodeAccessor.node.getLastEntryTerm());
+
+        nodeAccessor.addRandomEntry();
+
+        assertEquals(1, nodeAccessor.node.getLastEntryTerm());
     }
 
     @Test
     void setTerm() {
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+        nodeAccessor.node.setTerm(5);
+        assertEquals(5, nodeAccessor.node.currentTerm);
+
+        nodeAccessor.node.setTerm(3);
+        assertEquals(5, nodeAccessor.node.currentTerm);
+    }
+
+    @Test
+    void followerClientRequest() {
+        MockNodeAccessor nodeAccessor = accessors.get(0);
+        MockNodeAccessor leaderAccessor = accessors.get(1);
+
+        leaderAccessor.node.becomeLeader();
+
+        nodeAccessor.sendClientRequest(new ClientRequest("test"));
+        ClientResponse response = nodeAccessor.lastClientResponse;
+
+        assertFalse(response.isSuccess());
+        assertEquals(leaderAccessor.getNodeId(), response.getRedirect().getNodeId());
+    }
+
+    @Test
+    void leaderClientRequest() {
+        MockNodeAccessor leaderAccessor = accessors.get(0);
+
+        leaderAccessor.node.becomeLeader();
+
+        leaderAccessor.sendClientRequest(new ClientRequest("test"));
+        ClientResponse response = leaderAccessor.lastClientResponse;
+
+        assertTrue(response.isSuccess());
     }
 }
