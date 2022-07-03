@@ -21,7 +21,7 @@ This will let you to sit back and enjoy the beautiful operation of Raft. It simu
 ```
 ./gradlew runHttp
 ```
-A quick HTTP implementation, allows you to send requests directly to the nodes at localhost:8085-8089. It takes some time to start up, don't send requests before it starts or it will die.
+A quick and dirty HTTP implementation, allows you to send requests directly to the nodes at localhost:8085-8089. It takes some time to start up, don't send requests before it starts or it will die.
 
 #### Testing
 ```
