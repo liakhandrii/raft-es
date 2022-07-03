@@ -5,12 +5,12 @@ import com.liakhandrii.es.implementation.local.models.ClientResponse;
 import com.liakhandrii.es.raft.models.*;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 public class NodeCore<T> {
 
     protected String id;
-    protected NodeRank rank = NodeRank.FOLLOWER;
+    protected NodeRole role = NodeRole.FOLLOWER;
     protected long currentTerm = 0;
     /**
      * Value in milliseconds, should be randomized
@@ -33,13 +33,15 @@ public class NodeCore<T> {
     protected String votedId = null;
     protected Map<String, Boolean> receivedVotes;
 
-    protected Vector<Entry<T>> entries = new Vector<>();
+    protected List<Entry<T>> entries = new ArrayList<>();
     protected Long commitIndex = null;
-    protected final Map<String, Long> commitIndexes = new ConcurrentHashMap<>();
-    protected final Map<String, Long> nextIndexes = new ConcurrentHashMap<>();
+    protected final Map<String, Long> commitIndexes = new HashMap<>();
+    protected final Map<String, Long> nextIndexes = new HashMap<>();
 
-    protected Timer electionTimer;
-    protected Timer heartbeatTimer;
+    ScheduledExecutorService executorService;
+
+    protected ScheduledFuture<?> electionTask;
+    protected ScheduledFuture<?> heartbeatTask;
 
     /**
      * Creates a new NodeCore with an election timeout randomized from 250 to 400 ms
@@ -48,8 +50,9 @@ public class NodeCore<T> {
     public NodeCore() {
         electionTimeout = 250 + (new Random().nextInt(151));
         id = UUID.randomUUID().toString();
-        otherNodes = new ConcurrentHashMap<>();
-        receivedVotes = new ConcurrentHashMap<>();
+        otherNodes = new HashMap<>();
+        receivedVotes = new HashMap<>();
+        executorService = Executors.newScheduledThreadPool(2);
     }
 
     /**
@@ -62,13 +65,11 @@ public class NodeCore<T> {
     }
 
     public void stopNode() {
-        if (electionTimer != null) {
-            electionTimer.cancel();
-            electionTimer = null;
+        if (electionTask != null) {
+            electionTask.cancel(false);
         }
-        if (heartbeatTimer != null) {
-            heartbeatTimer.cancel();
-            electionTimer = null;
+        if (heartbeatTask != null) {
+            heartbeatTask.cancel(false);
         }
     }
 
@@ -79,7 +80,7 @@ public class NodeCore<T> {
     }
 
     public void sendVoteRequest(NodeAccessor<T> nodeAccessor) {
-        if (rank != NodeRank.CANDIDATE) {
+        if (role != NodeRole.CANDIDATE) {
             return;
         }
 
@@ -130,14 +131,14 @@ public class NodeCore<T> {
      * @param empty if the request should just be an empty heartbeat
      */
     public void sendEntries(NodeAccessor<T> nodeAccessor, boolean empty) {
-        if (rank != NodeRank.LEADER) {
+        if (role != NodeRole.LEADER) {
             return;
         }
         AppendEntriesRequest<T> request;
 
         if (empty) {
             // Just sending a heartbeat
-            request = new AppendEntriesRequest<>(currentTerm, id, null, null, new Vector<>(), null, UUID.randomUUID().toString());
+            request = new AppendEntriesRequest<>(currentTerm, id, null, null, new ArrayList<>(), null, UUID.randomUUID().toString());
         } else {
             Long nextNodeIndex = nextIndexes.get(nodeAccessor.getNodeId());
 
@@ -145,11 +146,11 @@ public class NodeCore<T> {
                 nextNodeIndex = 0L;
             }
 
-            Vector<Entry<T>> newEntries;
+            List<Entry<T>> newEntries;
             if (getCurrentIndex() != null && getCurrentIndex() >= nextNodeIndex) {
-                newEntries = new Vector<>(entries.subList(nextNodeIndex.intValue(), entries.size()));
+                newEntries = new ArrayList<>(entries.subList(nextNodeIndex.intValue(), entries.size()));
             } else {
-                newEntries = new Vector<>();
+                newEntries = new ArrayList<>();
             }
 
             Long lastNodeIndex = nextNodeIndex - 1;
@@ -169,7 +170,7 @@ public class NodeCore<T> {
     }
 
     public void processEntriesResponse(AppendEntriesResponse response) {
-        if (rank != NodeRank.LEADER) {
+        if (role != NodeRole.LEADER) {
             return;
         }
 
@@ -217,13 +218,16 @@ public class NodeCore<T> {
         if (request.getEntries().size() > 0) {
             // We have to override the extra entries, obey the leader
             if (request.getPreviousIndex() != null && request.getPreviousIndex() < getCurrentIndex()) {
-                commitIndex = request.getCommitIndex();
-                entries = new Vector<>(entries.subList(0, request.getPreviousIndex().intValue() + 1));
+                entries = new ArrayList<>(entries.subList(0, request.getPreviousIndex().intValue() + 1));
             } else if (request.getPreviousIndex() == null) {
                 entries.clear();
             }
 
             entries.addAll(request.getEntries());
+            if (request.getCommitIndex() != null) {
+                // We can't just save the commit index from the server, it may not be true for this node
+                commitIndex = Math.min(request.getCommitIndex(), getCurrentIndex());
+            }
 
         }
 
@@ -232,7 +236,7 @@ public class NodeCore<T> {
     }
 
     public ClientResponse receiveClientRequest(ClientRequest<T> request) {
-        if (rank == NodeRank.LEADER) {
+        if (role == NodeRole.LEADER) {
             entries.add(new Entry<>(request.getValue(), currentTerm, getCurrentIndex() == null ? 0 : getCurrentIndex() + 1));
             return new ClientResponse(true, null);
         } else {
@@ -245,19 +249,19 @@ public class NodeCore<T> {
         votedId = id;
         receivedVotes.clear();
         receivedVotes.put(id, true);
-        rank = NodeRank.CANDIDATE;
+        role = NodeRole.CANDIDATE;
         otherNodes.values().forEach(this::sendVoteRequest);
     }
 
     protected void becomeFollower(String leaderId) {
-        rank = NodeRank.FOLLOWER;
+        role = NodeRole.FOLLOWER;
         if (leaderId != null) {
             currentLeader = otherNodes.get(leaderId);
         }
     }
 
     protected void becomeLeader() {
-        rank = NodeRank.LEADER;
+        role = NodeRole.LEADER;
         currentLeader = null;
         receivedVotes.clear();
         restartElectionTimer();
@@ -276,40 +280,33 @@ public class NodeCore<T> {
      * Called when the node didn't receive a heartbeat, so it has to start an election.
      */
     private void electionTimerFired() {
-        if (rank != NodeRank.LEADER) {
+        if (role != NodeRole.LEADER) {
             startElection();
         }
     }
 
     private void startElectionTimer() {
-        TimerTask electionTask = new TimerTask() {
-            public void run() {
-                electionTimerFired();
-            }
-        };
-        electionTimer = new Timer();
-        electionTimer.scheduleAtFixedRate(electionTask, electionTimeout, electionTimeout);
+        if (electionTask != null && !electionTask.isCancelled()) {
+            electionTask.cancel(false);
+        }
+        Runnable electionRunnable = () -> electionTimerFired();
+        electionTask = executorService.scheduleWithFixedDelay(electionRunnable, electionTimeout, electionTimeout, TimeUnit.MILLISECONDS);
     }
 
     private void restartElectionTimer() {
-        if (electionTimer != null) {
-            electionTimer.cancel();
-        }
         startElectionTimer();
     }
 
     private void startHeartbeatTimer() {
-        TimerTask heartbeatTask = new TimerTask() {
-            public void run() {
-                heartbeatTimerFired();
-            }
-        };
-        heartbeatTimer = new Timer();
-        heartbeatTimer.scheduleAtFixedRate(heartbeatTask, heartbeatInterval, heartbeatInterval);
+        if (heartbeatTask != null && !electionTask.isCancelled()) {
+            heartbeatTask.cancel(false);
+        }
+        Runnable heartbeatRunnable = () -> heartbeatTimerFired();
+        heartbeatTask = executorService.scheduleAtFixedRate(heartbeatRunnable, heartbeatInterval, heartbeatInterval, TimeUnit.MILLISECONDS);
     }
 
     private void heartbeatTimerFired() {
-        if (rank == NodeRank.LEADER) {
+        if (role == NodeRole.LEADER) {
             otherNodes.values().forEach(nodeAccessor -> sendEntries(nodeAccessor, false));
         }
     }
@@ -372,5 +369,9 @@ public class NodeCore<T> {
             return true;
         }
         return false;
+    }
+
+    public List<Entry<T>> getEntries() {
+        return entries;
     }
 }

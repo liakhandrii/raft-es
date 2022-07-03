@@ -1,5 +1,5 @@
 package com.liakhandrii.es.raft.models;
 
-public enum NodeRank {
+public enum NodeRole {
     FOLLOWER, CANDIDATE, LEADER
 }

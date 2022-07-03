@@ -1,17 +1,16 @@
 package com.liakhandrii.es.raft;
 
 
+import com.liakhandrii.es.implementation.local.LocalNodeAccessor;
 import com.liakhandrii.es.implementation.local.models.ClientRequest;
 import com.liakhandrii.es.implementation.local.models.ClientResponse;
+import com.liakhandrii.es.raft.NodeAccessor;
+import com.liakhandrii.es.raft.NodeCore;
 import com.liakhandrii.es.raft.models.*;
 
 import java.util.UUID;
-import java.util.logging.Logger;
 
-public class MockNodeAccessor extends NodeAccessor<String> {
-
-    public NodeCore<String> node;
-    public boolean isNodeDown = false;
+public class MockNodeAccessor extends LocalNodeAccessor {
 
     public AppendEntriesRequest<String> lastAppendRequest = null;
     public AppendEntriesResponse        lastAppendResponse = null;
@@ -22,8 +21,7 @@ public class MockNodeAccessor extends NodeAccessor<String> {
     public ClientResponse lastClientResponse = null;
 
     public MockNodeAccessor(NodeCore<String> node) {
-        this.node = node;
-        this.nodeId = node.getId();
+        super(node);
     }
 
     public void killNode() {
@@ -79,6 +77,7 @@ public class MockNodeAccessor extends NodeAccessor<String> {
         node.processVoteResponse(response);
     }
 
+    @Override
     public ClientResponse sendClientRequest(ClientRequest<String> request) {
         System.out.println("Node " + nodeId.substring(0, 4) + " received a client request");
         ClientResponse response = node.receiveClientRequest(request);

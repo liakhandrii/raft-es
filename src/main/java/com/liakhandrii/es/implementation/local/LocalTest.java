@@ -1,62 +1,63 @@
-package com.liakhandrii.es.raft;
+package com.liakhandrii.es.implementation.local;
 
 import com.liakhandrii.es.implementation.local.models.ClientRequest;
 import com.liakhandrii.es.implementation.local.models.ClientResponse;
-import com.liakhandrii.es.raft.models.NodeRank;
+import com.liakhandrii.es.raft.NodeAccessor;
+import com.liakhandrii.es.raft.NodeCore;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class LocalTest {
+public class LocalTest<T extends LocalNodeAccessor> {
 
-    static public Vector<MockNodeAccessor> accessors = new Vector<>();
-    static public Map<String, MockNodeAccessor> accessorsMap = new ConcurrentHashMap<>();
+    public List<T> accessors = new ArrayList<>();
+    public Map<String, T> accessorsMap = new HashMap<>();
 
-    public static Vector<MockNodeAccessor> generateNodes(int count, boolean startNodes) {
-        Vector<MockNodeAccessor> accessors = new Vector<>();
+    public static void main(String[] args) {
+        LocalTest<LocalNodeAccessor> test = new LocalTest<>();
+        test.setAccessors(generateNodes(5));
+        test.start();
+    }
+
+    private static List<LocalNodeAccessor> generateNodes(int count) {
+        List<LocalNodeAccessor> accessors = new ArrayList<>();
 
         for (int i = 0; i < count; i += 1) {
             NodeCore<String> node = new NodeCore<>();
-            accessors.add(new MockNodeAccessor(node));
-        }
-
-        accessorsMap = accessors.stream().collect(Collectors.toMap(MockNodeAccessor::getNodeId, Function.identity()));
-        accessors.forEach(nodeAccessor -> {
-            for (int i = 0; i < count; i += 1) {
-                accessors.get(i).node.registerOtherNode(nodeAccessor);
-            }
-        });
-
-        if (startNodes) {
-            for (int i = 0; i < count; i += 1) {
-                int finalI = i;
-                Thread thread = new Thread(() -> accessors.get(finalI).node.startNode());
-                thread.start();
-            }
+            accessors.add(new LocalNodeAccessor(node));
         }
 
         return accessors;
     }
 
-    public static void main(String[] args) {
-        accessors = generateNodes(5, true);
+    public void setAccessors(List<T> nodes) {
+        this.accessors = nodes;
+        accessorsMap = accessors.stream().collect(Collectors.toMap(T::getNodeId, Function.identity()));
+        accessors.forEach(nodeAccessor -> {
+            for (int i = 0; i < accessors.size(); i += 1) {
+                accessors.get(i).node.registerOtherNode(nodeAccessor);
+            }
+        });
+    }
 
+    public void start() {
         startClientTimer();
         startKillTimer();
         startMonitorTimer();
 
+        accessors.forEach(accessor -> accessor.node.startNode());
+
         System.out.println("running");
     }
 
-    public static void startClientTimer() {
+    public void startClientTimer() {
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
                 System.out.println("Client sends a request");
-                MockNodeAccessor node = accessors.get(new Random().nextInt(5));
+                T node = accessors.get(new Random().nextInt(5));
                 ClientRequest<String> request = new ClientRequest<>(UUID.randomUUID().toString());
                 ClientResponse response = node.sendClientRequest(request);
                 if (response != null && response.getRedirect() != null) {
@@ -70,14 +71,14 @@ public class LocalTest {
         }, 2000, 2000);
     }
 
-    public static void startKillTimer() {
+    public void startKillTimer() {
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
                 System.out.println("A node gets restarted");
                 boolean killLeader = new Random().nextBoolean();
-                MockNodeAccessor node = accessors.get(new Random().nextInt(5));
+                T node = accessors.get(new Random().nextInt(5));
                 node.killNode();
                 try {
                     Thread.sleep(3000);
@@ -89,15 +90,15 @@ public class LocalTest {
         }, 5000, 5000);
     }
 
-    public static void startMonitorTimer() {
+    public void startMonitorTimer() {
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
-                accessors.forEach(localNodeAccessor -> {
-                    int size = localNodeAccessor.node.entries.size();
+                accessors.forEach(T -> {
+                    int size = T.node.getEntries().size();
                     if (size > 0) {
-                        System.out.println(localNodeAccessor.node.entries.subList(Math.max(size - 4, 0), size).toString());
+                        System.out.println(T.node.getEntries().subList(Math.max(size - 4, 0), size).toString());
                     }
                 });
             }

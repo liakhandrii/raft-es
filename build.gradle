@@ -1,5 +1,14 @@
 plugins {
     id 'java'
+    id "application"
+}
+apply plugin : "java"
+ext {
+    javaMainClass = "com.liakhandrii.es.implementation.local.LocalTest"
+}
+
+application {
+    mainClassName = javaMainClass
 }
 
 group 'org.example'

@@ -2,7 +2,7 @@ package com.liakhandrii.es.raft.models;
 
 
 import java.util.List;
-import java.util.Vector;
+import java.util.List;
 
 public class AppendEntriesRequest<T> {
     private long leaderTerm;
@@ -21,7 +21,7 @@ public class AppendEntriesRequest<T> {
     /**
      * All the new entries the receiver has to store, empty for a heartbeat
      */
-    private Vector<Entry<T>> entries;
+    private List<Entry<T>> entries;
 
     /**
      * Indicates the last entry to be known to be saved on a majority of nodes
@@ -30,7 +30,7 @@ public class AppendEntriesRequest<T> {
 
     private String messageId;
 
-    public AppendEntriesRequest(long leaderTerm, String leaderId, Long previousIndex, Long previousTerm, Vector<Entry<T>> entries, Long commitIndex, String messageId) {
+    public AppendEntriesRequest(long leaderTerm, String leaderId, Long previousIndex, Long previousTerm, List<Entry<T>> entries, Long commitIndex, String messageId) {
         this.leaderTerm = leaderTerm;
         this.leaderId = leaderId;
         this.previousIndex = previousIndex;
@@ -56,7 +56,7 @@ public class AppendEntriesRequest<T> {
         return previousTerm;
     }
 
-    public Vector<Entry<T>> getEntries() {
+    public List<Entry<T>> getEntries() {
         return entries;
     }
 
