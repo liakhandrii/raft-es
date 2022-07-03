@@ -1,5 +1,6 @@
 package com.liakhandrii.es.raft;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.liakhandrii.es.raft.models.AppendEntriesRequest;
 import com.liakhandrii.es.raft.models.AppendEntriesResponse;
 import com.liakhandrii.es.raft.models.VoteRequest;
@@ -10,11 +11,8 @@ import java.util.Objects;
 abstract public class NodeAccessor<T> {
     protected String nodeId;
 
-    abstract public void sendAppendEntriesRequest(AppendEntriesRequest<T> request);
-    abstract public void sendVoteRequest(VoteRequest request);
-
-    abstract public void sendAppendEntriesResponse(AppendEntriesResponse response);
-    abstract public void sendVoteResponse(VoteResponse response);
+    abstract public AppendEntriesResponse sendAppendEntriesRequest(AppendEntriesRequest<T> request);
+    abstract public VoteResponse sendVoteRequest(VoteRequest request);
 
     public String getNodeId() {
         return nodeId;

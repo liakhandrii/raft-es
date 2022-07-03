@@ -36,7 +36,7 @@ class NodeUnitTests {
         List<MockNodeAccessor> newAccessors = new ArrayList<>();
 
         for (int i = 0; i < count; i += 1) {
-            NodeCore<String> node = new NodeCore<>();
+            NodeCore<String> node = new NodeCore<>(50, 250);
             newAccessors.add(new MockNodeAccessor(node));
         }
 
@@ -166,12 +166,12 @@ class NodeUnitTests {
 
     @Test
     void testInitValues() {
-        NodeCore<String> node = new NodeCore<>();
+        NodeCore<String> node = new NodeCore<>(50, 250);
 
         assertEquals(NodeRole.FOLLOWER, node.role);
         assertEquals(0, node.currentTerm);
         assertEquals(50, node.heartbeatInterval);
-        assertTrue(250 <= node.electionTimeout && 400 >= node.electionTimeout);
+        assertTrue(250 <= node.electionTimeout && 374 >= node.electionTimeout);
         assertEquals(0, node.otherNodes.size());
         assertEquals(0, node.receivedVotes.size());
     }
@@ -182,11 +182,9 @@ class NodeUnitTests {
         MockNodeAccessor candidateAccessor = accessors.get(1);
 
         nodeAccessor.node.setTerm(1);
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(0, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
+        VoteResponse response = nodeAccessor.node.receiveVoteRequest(new VoteRequest(0, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
 
-        VoteResponse response = candidateAccessor.lastVoteResponse;
-
-        assertFalse(response.didReceiveVote());
+        assertFalse(response.getDidReceiveVote());
     }
 
     @Test
@@ -195,11 +193,9 @@ class NodeUnitTests {
         MockNodeAccessor candidateAccessor = accessors.get(1);
 
         nodeAccessor.node.setTerm(1);
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(0, candidateAccessor.getNodeId(), 1L, 0L, UUID.randomUUID().toString()));
+        VoteResponse response = nodeAccessor.node.receiveVoteRequest(new VoteRequest(0, candidateAccessor.getNodeId(), 1L, 0L, UUID.randomUUID().toString()));
 
-        VoteResponse response = candidateAccessor.lastVoteResponse;
-
-        assertFalse(response.didReceiveVote());
+        assertFalse(response.getDidReceiveVote());
     }
 
     @Test
@@ -209,11 +205,9 @@ class NodeUnitTests {
 
         nodeAccessor.node.setTerm(1);
         nodeAccessor.addRandomEntry();
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(1, candidateAccessor.getNodeId(), null, null, UUID.randomUUID().toString()));
+        VoteResponse response = nodeAccessor.node.receiveVoteRequest(new VoteRequest(1, candidateAccessor.getNodeId(), null, null, UUID.randomUUID().toString()));
 
-        VoteResponse response = candidateAccessor.lastVoteResponse;
-
-        assertFalse(response.didReceiveVote());
+        assertFalse(response.getDidReceiveVote());
     }
 
     @Test
@@ -222,11 +216,9 @@ class NodeUnitTests {
         MockNodeAccessor candidateAccessor = accessors.get(1);
 
         nodeAccessor.node.setTerm(1);
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(2, candidateAccessor.getNodeId(), null, null, UUID.randomUUID().toString()));
+        VoteResponse response = nodeAccessor.node.receiveVoteRequest(new VoteRequest(2, candidateAccessor.getNodeId(), null, null, UUID.randomUUID().toString()));
 
-        VoteResponse response = candidateAccessor.lastVoteResponse;
-
-        assertTrue(response.didReceiveVote());
+        assertTrue(response.getDidReceiveVote());
     }
 
     @Test
@@ -236,11 +228,9 @@ class NodeUnitTests {
 
         nodeAccessor.node.setTerm(2);
         nodeAccessor.node.votedId = nodeAccessor.nodeId;
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(2, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
+        VoteResponse response = nodeAccessor.node.receiveVoteRequest(new VoteRequest(2, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
 
-        VoteResponse response = candidateAccessor.lastVoteResponse;
-
-        assertFalse(response.didReceiveVote());
+        assertFalse(response.getDidReceiveVote());
     }
 
     @Test
@@ -250,11 +240,9 @@ class NodeUnitTests {
 
         nodeAccessor.node.setTerm(2);
         nodeAccessor.node.votedId = nodeAccessor.nodeId;
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(3, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
+        VoteResponse response = nodeAccessor.node.receiveVoteRequest(new VoteRequest(3, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
 
-        VoteResponse response = candidateAccessor.lastVoteResponse;
-
-        assertTrue(response.didReceiveVote());
+        assertTrue(response.getDidReceiveVote());
     }
 
     @Test
@@ -524,7 +512,7 @@ class NodeUnitTests {
     @Test
     void registerOtherNode() {
         MockNodeAccessor nodeAccessor = accessors.get(0);
-        NodeCore<String> newNode = new NodeCore<>();
+        NodeCore<String> newNode = new NodeCore<>(50, 250);
         MockNodeAccessor newNodeAccessor = new MockNodeAccessor(newNode);
 
         nodeAccessor.node.registerOtherNode(newNodeAccessor);

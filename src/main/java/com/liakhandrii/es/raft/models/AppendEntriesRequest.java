@@ -30,6 +30,10 @@ public class AppendEntriesRequest<T> {
 
     private String messageId;
 
+    private AppendEntriesRequest() {
+
+    }
+
     public AppendEntriesRequest(long leaderTerm, String leaderId, Long previousIndex, Long previousTerm, List<Entry<T>> entries, Long commitIndex, String messageId) {
         this.leaderTerm = leaderTerm;
         this.leaderId = leaderId;

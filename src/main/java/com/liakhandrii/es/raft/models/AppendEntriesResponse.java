@@ -3,15 +3,19 @@ package com.liakhandrii.es.raft.models;
 public class AppendEntriesResponse {
     private long responderTerm;
     private Long lastEntryIndex;
-    private boolean isSuccessful;
+    private boolean successful;
     private FailureReason reason;
     private String responderId;
     private String messageId;
 
-    private AppendEntriesResponse(long responderTerm, Long lastEntryIndex, boolean isSuccessful, FailureReason reason, String responderId, String messageId) {
+    private AppendEntriesResponse() {
+
+    }
+
+    private AppendEntriesResponse(long responderTerm, Long lastEntryIndex, boolean successful, FailureReason reason, String responderId, String messageId) {
         this.responderTerm = responderTerm;
         this.lastEntryIndex = lastEntryIndex;
-        this.isSuccessful = isSuccessful;
+        this.successful = successful;
         this.reason = reason;
         this.responderId = responderId;
         this.messageId = messageId;
@@ -41,7 +45,7 @@ public class AppendEntriesResponse {
     }
 
     public boolean isSuccessful() {
-        return isSuccessful;
+        return successful;
     }
 
     public FailureReason getReason() {

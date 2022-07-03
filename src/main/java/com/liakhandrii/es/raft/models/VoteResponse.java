@@ -6,7 +6,11 @@ public class VoteResponse {
     private String responderId;
     private String messageId;
 
-    private VoteResponse(long responderTerm, boolean didReceiveVote, String responderId, String messageId) {
+    private VoteResponse() {
+
+    }
+
+    public VoteResponse(long responderTerm, boolean didReceiveVote, String responderId, String messageId) {
         this.responderTerm = responderTerm;
         this.didReceiveVote = didReceiveVote;
         this.responderId = responderId;
@@ -35,7 +39,7 @@ public class VoteResponse {
         return responderTerm;
     }
 
-    public boolean didReceiveVote() {
+    public boolean getDidReceiveVote() {
         return didReceiveVote;
     }
 

@@ -24,7 +24,7 @@ public class LocalTest<T extends LocalNodeAccessor> {
         List<LocalNodeAccessor> accessors = new ArrayList<>();
 
         for (int i = 0; i < count; i += 1) {
-            NodeCore<String> node = new NodeCore<>();
+            NodeCore<String> node = new NodeCore<>(250, 50);
             accessors.add(new LocalNodeAccessor(node));
         }
 

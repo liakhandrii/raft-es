@@ -3,12 +3,15 @@ plugins {
     id "application"
 }
 apply plugin : "java"
-ext {
-    javaMainClass = "com.liakhandrii.es.implementation.local.LocalTest"
+
+task(runLocal, dependsOn: 'classes', type: JavaExec) {
+    main = 'com.liakhandrii.es.implementation.local.LocalTest'
+    classpath = sourceSets.main.runtimeClasspath
 }
 
-application {
-    mainClassName = javaMainClass
+task(runHttp, dependsOn: 'classes', type: JavaExec) {
+    main = 'com.liakhandrii.es.implementation.http.HttpTest'
+    classpath = sourceSets.main.runtimeClasspath
 }
 
 group 'org.example'
@@ -19,6 +22,7 @@ repositories {
 }
 
 dependencies {
+    implementation 'io.javalin:javalin-bundle:4.6.3'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
 }

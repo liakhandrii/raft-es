@@ -4,8 +4,6 @@ package com.liakhandrii.es.raft;
 import com.liakhandrii.es.implementation.local.LocalNodeAccessor;
 import com.liakhandrii.es.implementation.local.models.ClientRequest;
 import com.liakhandrii.es.implementation.local.models.ClientResponse;
-import com.liakhandrii.es.raft.NodeAccessor;
-import com.liakhandrii.es.raft.NodeCore;
 import com.liakhandrii.es.raft.models.*;
 
 import java.util.UUID;
@@ -42,39 +40,29 @@ public class MockNodeAccessor extends LocalNodeAccessor {
     }
 
     @Override
-    public void sendAppendEntriesRequest(AppendEntriesRequest<String> request) {
+    public AppendEntriesResponse sendAppendEntriesRequest(AppendEntriesRequest<String> request) {
         lastAppendRequest = request;
-        if (isNodeDown) { return; }
+        if (isNodeDown) { return null; }
         System.out.println("Leader " + request.getLeaderId().substring(0, 4) + " sends " + request.getEntries().size() + " entries to " + nodeId.substring(0, 4));
-        node.receiveEntries(request);
-    }
-
-    @Override
-    public void sendAppendEntriesResponse(AppendEntriesResponse response) {
+        AppendEntriesResponse response = node.receiveEntries(request);
         lastAppendResponse = response;
-        if (isNodeDown) { return; }
         if (response.isSuccessful()) {
             System.out.println("Node " + response.getResponderId().substring(0, 4) + " accepted new entries from " + nodeId.substring(0, 4));
         } else {
             System.out.println("Node " + response.getResponderId().substring(0, 4) + " rejects. Reason: " + response.getReason());
         }
-        node.processEntriesResponse(response);
+        return response;
     }
 
     @Override
-    public void sendVoteRequest(VoteRequest request) {
+    public VoteResponse sendVoteRequest(VoteRequest request) {
         lastVoteRequest = request;
-        if (isNodeDown) { return; }
+        if (isNodeDown) { return null; }
         System.out.println("Candidate " + request.getCandidateId().substring(0, 4) + " term " + request.getCandidateTerm() + " sends a vote request to " + nodeId.substring(0, 4) + " at " + System.currentTimeMillis());
-        node.receiveVoteRequest(request);
-    }
-
-    @Override
-    public void sendVoteResponse(VoteResponse response) {
+        VoteResponse response = node.receiveVoteRequest(request);
         lastVoteResponse = response;
-        if (isNodeDown) { return; }
-        System.out.println("Node " + response.getResponderId().substring(0, 4) + " votes " + response.didReceiveVote());
-        node.processVoteResponse(response);
+        System.out.println("Node " + response.getResponderId().substring(0, 4) + " votes " + response.getDidReceiveVote());
+        return response;
     }
 
     @Override

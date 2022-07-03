@@ -19,7 +19,7 @@ public class NodeCore<T> {
     /**
      * Value in milliseconds
      */
-    protected long heartbeatInterval = 50;
+    protected long heartbeatInterval;
 
     /**
      * Keeps references to other nodes in the cluster
@@ -47,12 +47,18 @@ public class NodeCore<T> {
      * Creates a new NodeCore with an election timeout randomized from 250 to 400 ms
      * Always call this constructor in the subclasses, unless you do the initialization yourself.
      */
-    public NodeCore() {
-        electionTimeout = 250 + (new Random().nextInt(151));
+    public NodeCore(int heartbeatInterval, int electionTimeout) {
+        this.heartbeatInterval = heartbeatInterval;
+        this.electionTimeout = electionTimeout + (new Random().nextInt(electionTimeout / 2));
         id = UUID.randomUUID().toString();
         otherNodes = new HashMap<>();
         receivedVotes = new HashMap<>();
         executorService = Executors.newScheduledThreadPool(2);
+    }
+
+    public NodeCore(int heartbeatInterval, int electionTimeout, String id) {
+        this(heartbeatInterval, electionTimeout);
+        this.id = id;
     }
 
     /**
@@ -85,21 +91,26 @@ public class NodeCore<T> {
         }
 
         VoteRequest request = new VoteRequest(currentTerm, id, getCurrentIndex(), getLastEntryTerm(), UUID.randomUUID().toString());
-        nodeAccessor.sendVoteRequest(request);
+        VoteResponse response = nodeAccessor.sendVoteRequest(request);
+        processVoteResponse(response);
     }
 
     public void processVoteResponse(VoteResponse response) {
+        if (response == null) {
+            return;
+        }
+
         if (response.getResponderTerm() > currentTerm) {
             becomeFollower(response.getResponderId());
         } else {
-            receivedVotes.put(response.getResponderId(), response.didReceiveVote());
+            receivedVotes.put(response.getResponderId(), response.getDidReceiveVote());
             if (countVotes() > majoritySize()) {
                 becomeLeader();
             }
         }
     }
 
-    public void receiveVoteRequest(VoteRequest request) {
+    public VoteResponse receiveVoteRequest(VoteRequest request) {
         setTerm(request.getCandidateTerm());
 
         VoteResponse response;
@@ -121,8 +132,7 @@ public class NodeCore<T> {
             response =  VoteResponse.voted(currentTerm, id, request.getMessageId());
         }
 
-        NodeAccessor<T> accessor = otherNodes.get(request.getCandidateId());
-        accessor.sendVoteResponse(response);
+        return response;
     }
 
     /**
@@ -166,11 +176,12 @@ public class NodeCore<T> {
             request = new AppendEntriesRequest<>(currentTerm, id, lastNodeIndex, lastNodeTerm, newEntries, commitIndex, UUID.randomUUID().toString());
         }
 
-        nodeAccessor.sendAppendEntriesRequest(request);
+        AppendEntriesResponse response = nodeAccessor.sendAppendEntriesRequest(request);
+        processEntriesResponse(response);
     }
 
     public void processEntriesResponse(AppendEntriesResponse response) {
-        if (role != NodeRole.LEADER) {
+        if (response == null || role != NodeRole.LEADER) {
             return;
         }
 
@@ -187,7 +198,7 @@ public class NodeCore<T> {
     /**
      * Become follower, receive new entries, analyze their validity, store.
      */
-    public void receiveEntries(AppendEntriesRequest<T> request) {
+    public AppendEntriesResponse receiveEntries(AppendEntriesRequest<T> request) {
         if (setTerm(request.getLeaderTerm()) || request.getLeaderTerm() == currentTerm) {
             becomeFollower(request.getLeaderId());
         }
@@ -210,8 +221,7 @@ public class NodeCore<T> {
 
             if (fail) {
                 response = AppendEntriesResponse.failed(currentTerm, getCurrentIndex(), id, request.getMessageId(), FailureReason.DATA_INCONSISTENCY);
-                accessor.sendAppendEntriesResponse(response);
-                return;
+                return response;
             }
         }
 
@@ -232,7 +242,7 @@ public class NodeCore<T> {
         }
 
         response = AppendEntriesResponse.succesful(currentTerm, getCurrentIndex(), id, request.getMessageId());
-        accessor.sendAppendEntriesResponse(response);
+        return response;
     }
 
     public ClientResponse receiveClientRequest(ClientRequest<T> request) {
@@ -289,7 +299,13 @@ public class NodeCore<T> {
         if (electionTask != null && !electionTask.isCancelled()) {
             electionTask.cancel(false);
         }
-        Runnable electionRunnable = () -> electionTimerFired();
+        Runnable electionRunnable = () -> {
+            try {
+                electionTimerFired();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        };
         electionTask = executorService.scheduleWithFixedDelay(electionRunnable, electionTimeout, electionTimeout, TimeUnit.MILLISECONDS);
     }
 
@@ -301,8 +317,14 @@ public class NodeCore<T> {
         if (heartbeatTask != null && !electionTask.isCancelled()) {
             heartbeatTask.cancel(false);
         }
-        Runnable heartbeatRunnable = () -> heartbeatTimerFired();
-        heartbeatTask = executorService.scheduleAtFixedRate(heartbeatRunnable, heartbeatInterval, heartbeatInterval, TimeUnit.MILLISECONDS);
+        Runnable heartbeatRunnable = () -> {
+        try {
+            heartbeatTimerFired();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        };
+        heartbeatTask = executorService.scheduleWithFixedDelay(heartbeatRunnable, heartbeatInterval, heartbeatInterval, TimeUnit.MILLISECONDS);
     }
 
     private void heartbeatTimerFired() {
@@ -373,5 +395,13 @@ public class NodeCore<T> {
 
     public List<Entry<T>> getEntries() {
         return entries;
+    }
+
+    public NodeRole getRole() {
+        return role;
+    }
+
+    public NodeAccessor<T> getCurrentLeader() {
+        return currentLeader;
     }
 }

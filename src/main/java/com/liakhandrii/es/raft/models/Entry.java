@@ -7,6 +7,10 @@ public class Entry<T> {
     private long term;
     private long index;
 
+    private Entry() {
+
+    }
+
     public Entry(T data, long term, long index) {
         this.data = data;
         this.term = term;
