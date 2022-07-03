@@ -1,5 +1,7 @@
 package com.liakhandrii.es.raft.models;
 
+import java.util.Objects;
+
 public class Entry<T> {
     private T data;
     private long term;
@@ -30,5 +32,18 @@ public class Entry<T> {
                 ", term=" + term +
                 ", index=" + index +
                 '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Entry)) return false;
+        Entry<?> entry = (Entry<?>) o;
+        return term == entry.term && index == entry.index && Objects.equals(data, entry.data);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(data, term, index);
     }
 }

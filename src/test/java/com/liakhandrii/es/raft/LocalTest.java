@@ -2,18 +2,20 @@ package com.liakhandrii.es.raft;
 
 import com.liakhandrii.es.implementation.local.models.ClientRequest;
 import com.liakhandrii.es.implementation.local.models.ClientResponse;
+import com.liakhandrii.es.raft.models.NodeRank;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class LocalTest {
 
-    static public List<MockNodeAccessor> accessors = new ArrayList<>();
-    static public Map<String, MockNodeAccessor> accessorsMap = new HashMap<>();
+    static public Vector<MockNodeAccessor> accessors = new Vector<>();
+    static public Map<String, MockNodeAccessor> accessorsMap = new ConcurrentHashMap<>();
 
-    public static List<MockNodeAccessor> generateNodes(int count, boolean startNodes) {
-        List<MockNodeAccessor> accessors = new ArrayList<>();
+    public static Vector<MockNodeAccessor> generateNodes(int count, boolean startNodes) {
+        Vector<MockNodeAccessor> accessors = new Vector<>();
 
         for (int i = 0; i < count; i += 1) {
             NodeCore<String> node = new NodeCore<>();
@@ -55,7 +57,7 @@ public class LocalTest {
             public void run() {
                 System.out.println("Client sends a request");
                 MockNodeAccessor node = accessors.get(new Random().nextInt(5));
-                ClientRequest request = new ClientRequest(UUID.randomUUID().toString());
+                ClientRequest<String> request = new ClientRequest<>(UUID.randomUUID().toString());
                 ClientResponse response = node.sendClientRequest(request);
                 if (response != null && response.getRedirect() != null) {
                     try {
@@ -74,16 +76,17 @@ public class LocalTest {
             @Override
             public void run() {
                 System.out.println("A node gets restarted");
+                boolean killLeader = new Random().nextBoolean();
                 MockNodeAccessor node = accessors.get(new Random().nextInt(5));
                 node.killNode();
                 try {
-                    Thread.sleep(30000);
+                    Thread.sleep(3000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
                 node.reviveNode();
             }
-        }, 15000, 150000);
+        }, 5000, 5000);
     }
 
     public static void startMonitorTimer() {
@@ -94,7 +97,7 @@ public class LocalTest {
                 accessors.forEach(localNodeAccessor -> {
                     int size = localNodeAccessor.node.entries.size();
                     if (size > 0) {
-                        System.out.println(localNodeAccessor.node.entries.subList(Math.max(size - 4, 0), size));
+                        System.out.println(localNodeAccessor.node.entries.subList(Math.max(size - 4, 0), size).toString());
                     }
                 });
             }

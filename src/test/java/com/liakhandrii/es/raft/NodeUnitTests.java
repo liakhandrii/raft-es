@@ -11,16 +11,13 @@ import org.junit.jupiter.api.TestInstance;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class NodeUnitTests {
 
-    static private List<MockNodeAccessor> accessors = new ArrayList<>();
+    static private Vector<MockNodeAccessor> accessors = new Vector<>();
 
     @BeforeEach
     void setUp() {
@@ -43,7 +40,6 @@ class NodeUnitTests {
         assertTrue(250 <= node.electionTimeout && 400 >= node.electionTimeout);
         assertEquals(0, node.otherNodes.size());
         assertEquals(0, node.receivedVotes.size());
-
     }
 
     @Test
@@ -70,14 +66,19 @@ class NodeUnitTests {
 
         assertFalse(response.didReceiveVote());
 
+        nodeAccessor.node.receiveVoteRequest(new VoteRequest(2, candidateAccessor.getNodeId(), null, null, UUID.randomUUID().toString()));
+        response = candidateAccessor.lastVoteResponse;
+
+        assertFalse(response.didReceiveVote());
+
         nodeAccessor.node.entries.clear();
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(1, candidateAccessor.getNodeId(), null, null, UUID.randomUUID().toString()));
+        nodeAccessor.node.receiveVoteRequest(new VoteRequest(2, candidateAccessor.getNodeId(), null, null, UUID.randomUUID().toString()));
         response = candidateAccessor.lastVoteResponse;
 
         assertTrue(response.didReceiveVote());
 
         // The node has voted on this term, so now it shouldn't vote
-        nodeAccessor.node.receiveVoteRequest(new VoteRequest(1, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
+        nodeAccessor.node.receiveVoteRequest(new VoteRequest(2, candidateAccessor.getNodeId(), 0L, 0L, UUID.randomUUID().toString()));
         response = candidateAccessor.lastVoteResponse;
 
         assertFalse(response.didReceiveVote());
@@ -161,7 +162,7 @@ class NodeUnitTests {
         MockNodeAccessor nodeAccessor = accessors.get(0);
         MockNodeAccessor leaderAccessor = accessors.get(1);
 
-        ArrayList<Entry<String>> entries = new ArrayList<>(Arrays.asList(
+        Vector<Entry<String>> entries = new Vector<>(Arrays.asList(
                 new Entry<>(UUID.randomUUID().toString(), 1, 0),
                 new Entry<>(UUID.randomUUID().toString(), 1, 1)
         ));
@@ -181,7 +182,7 @@ class NodeUnitTests {
 
         nodeAccessor.addRandomEntry();
 
-        ArrayList<Entry<String>> entries = new ArrayList<>(Arrays.asList(
+        Vector<Entry<String>> entries = new Vector<>(Arrays.asList(
                 new Entry<>(UUID.randomUUID().toString(), 1, 5),
                 new Entry<>(UUID.randomUUID().toString(), 1, 6)
         ));
@@ -201,7 +202,7 @@ class NodeUnitTests {
 
         nodeAccessor.addRandomEntry();
 
-        ArrayList<Entry<String>> entries = new ArrayList<>(Arrays.asList(
+        Vector<Entry<String>> entries = new Vector<>(Arrays.asList(
                 new Entry<>(UUID.randomUUID().toString(), 1, 0),
                 new Entry<>(UUID.randomUUID().toString(), 1, 1)
         ));
@@ -313,7 +314,7 @@ class NodeUnitTests {
 
         leaderAccessor.node.becomeLeader();
 
-        nodeAccessor.sendClientRequest(new ClientRequest("test"));
+        nodeAccessor.sendClientRequest(new ClientRequest<String>("test"));
         ClientResponse response = nodeAccessor.lastClientResponse;
 
         assertFalse(response.isSuccess());
@@ -326,7 +327,7 @@ class NodeUnitTests {
 
         leaderAccessor.node.becomeLeader();
 
-        leaderAccessor.sendClientRequest(new ClientRequest("test"));
+        leaderAccessor.sendClientRequest(new ClientRequest<String>("test"));
         ClientResponse response = leaderAccessor.lastClientResponse;
 
         assertTrue(response.isSuccess());

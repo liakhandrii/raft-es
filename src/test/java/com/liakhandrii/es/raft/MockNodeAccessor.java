@@ -6,12 +6,12 @@ import com.liakhandrii.es.implementation.local.models.ClientResponse;
 import com.liakhandrii.es.raft.models.*;
 
 import java.util.UUID;
+import java.util.logging.Logger;
 
 public class MockNodeAccessor extends NodeAccessor<String> {
 
     public NodeCore<String> node;
-    private boolean isNodeDown = false;
-
+    public boolean isNodeDown = false;
 
     public AppendEntriesRequest<String> lastAppendRequest = null;
     public AppendEntriesResponse        lastAppendResponse = null;
@@ -28,14 +28,16 @@ public class MockNodeAccessor extends NodeAccessor<String> {
 
     public void killNode() {
         isNodeDown = true;
+        node.stopNode();
     }
 
     public void reviveNode() {
         isNodeDown = false;
+        node.startNode();
     }
 
     public Entry<String> addRandomEntry() {
-        Long index = node.getCurrentIndex() == null ? -1 : node.getCurrentIndex();
+        long index = node.getCurrentIndex() == null ? -1 : node.getCurrentIndex();
         Entry<String> entry = new Entry<>(UUID.randomUUID().toString().substring(0, 4), node.currentTerm, index + 1);
         node.entries.add(entry);
         return entry;
@@ -77,7 +79,7 @@ public class MockNodeAccessor extends NodeAccessor<String> {
         node.processVoteResponse(response);
     }
 
-    public ClientResponse sendClientRequest(ClientRequest request) {
+    public ClientResponse sendClientRequest(ClientRequest<String> request) {
         System.out.println("Node " + nodeId.substring(0, 4) + " received a client request");
         ClientResponse response = node.receiveClientRequest(request);
         lastClientResponse = response;

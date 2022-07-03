@@ -5,6 +5,7 @@ import com.liakhandrii.es.implementation.local.models.ClientResponse;
 import com.liakhandrii.es.raft.models.*;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class NodeCore<T> {
 
@@ -32,10 +33,10 @@ public class NodeCore<T> {
     protected String votedId = null;
     protected Map<String, Boolean> receivedVotes;
 
-    protected List<Entry<T>> entries = new ArrayList<>();
+    protected Vector<Entry<T>> entries = new Vector<>();
     protected Long commitIndex = null;
-    protected final Map<String, Long> commitIndexes = new HashMap<>();
-    protected final Map<String, Long> nextIndexes = new HashMap<>();
+    protected final Map<String, Long> commitIndexes = new ConcurrentHashMap<>();
+    protected final Map<String, Long> nextIndexes = new ConcurrentHashMap<>();
 
     protected Timer electionTimer;
     protected Timer heartbeatTimer;
@@ -47,16 +48,28 @@ public class NodeCore<T> {
     public NodeCore() {
         electionTimeout = 250 + (new Random().nextInt(151));
         id = UUID.randomUUID().toString();
-        otherNodes = new HashMap<>();
-        receivedVotes = new HashMap<>();
+        otherNodes = new ConcurrentHashMap<>();
+        receivedVotes = new ConcurrentHashMap<>();
     }
 
     /**
      * The node doesn't start its operation immediately after running the constructor. Use this method when you're ready to start using the node.
      */
     public void startNode() {
+        // I'm using timers intentionally to make the thing asynchronous, which is much closer to the real world application
         startElectionTimer();
         startHeartbeatTimer();
+    }
+
+    public void stopNode() {
+        if (electionTimer != null) {
+            electionTimer.cancel();
+            electionTimer = null;
+        }
+        if (heartbeatTimer != null) {
+            heartbeatTimer.cancel();
+            electionTimer = null;
+        }
     }
 
     public void registerOtherNode(NodeAccessor<T> otherNode) {
@@ -99,6 +112,9 @@ public class NodeCore<T> {
         } else if (request.getCandidateTerm() == currentTerm && getCurrentIndex() != null && (request.getLastEntryIndex() == null || request.getLastEntryIndex() < getCurrentIndex())) {
             // We also don't vote for those whose term is the same as ours, but the last entry index is lower
             response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
+        } else if (request.getCandidateTerm() == currentTerm && getLastEntryTerm() != null && (request.getLastEntryTerm() == null || request.getLastEntryTerm() < getLastEntryTerm())) {
+            // This means the node starting the election might have been stuck without a connection to a previous leader, increasing it's term but not actually storing any entries
+            response = VoteResponse.rejected(currentTerm, id, request.getMessageId());
         } else {
             votedId = request.getCandidateId();
             response =  VoteResponse.voted(currentTerm, id, request.getMessageId());
@@ -121,7 +137,7 @@ public class NodeCore<T> {
 
         if (empty) {
             // Just sending a heartbeat
-            request = new AppendEntriesRequest<>(currentTerm, id, null, null, new ArrayList<>(), null, UUID.randomUUID().toString());
+            request = new AppendEntriesRequest<>(currentTerm, id, null, null, new Vector<>(), null, UUID.randomUUID().toString());
         } else {
             Long nextNodeIndex = nextIndexes.get(nodeAccessor.getNodeId());
 
@@ -129,11 +145,11 @@ public class NodeCore<T> {
                 nextNodeIndex = 0L;
             }
 
-            List<Entry<T>> newEntries;
+            Vector<Entry<T>> newEntries;
             if (getCurrentIndex() != null && getCurrentIndex() >= nextNodeIndex) {
-                newEntries = entries.subList(nextNodeIndex.intValue(), entries.size());
+                newEntries = new Vector<>(entries.subList(nextNodeIndex.intValue(), entries.size()));
             } else {
-                newEntries = new ArrayList<>();
+                newEntries = new Vector<>();
             }
 
             Long lastNodeIndex = nextNodeIndex - 1;
@@ -171,9 +187,9 @@ public class NodeCore<T> {
      * Become follower, receive new entries, analyze their validity, store.
      */
     public void receiveEntries(AppendEntriesRequest<T> request) {
-        setTerm(request.getLeaderTerm());
-        rank = NodeRank.FOLLOWER;
-        currentLeader = otherNodes.get(request.getLeaderId());
+        if (setTerm(request.getLeaderTerm()) || request.getLeaderTerm() == currentTerm) {
+            becomeFollower(request.getLeaderId());
+        }
 
         restartElectionTimer();
 
@@ -202,7 +218,7 @@ public class NodeCore<T> {
             // We have to override the extra entries, obey the leader
             if (request.getPreviousIndex() != null && request.getPreviousIndex() < getCurrentIndex()) {
                 commitIndex = request.getCommitIndex();
-                entries = entries.subList(0, request.getPreviousIndex().intValue() + 1);
+                entries = new Vector<>(entries.subList(0, request.getPreviousIndex().intValue() + 1));
             } else if (request.getPreviousIndex() == null) {
                 entries.clear();
             }
@@ -248,7 +264,9 @@ public class NodeCore<T> {
 
         otherNodes.values().forEach(nodeAccessor -> {
             commitIndexes.put(nodeAccessor.getNodeId(), 0L);
-            nextIndexes.put(nodeAccessor.getNodeId(), commitIndex);
+            if (commitIndex != null) {
+                nextIndexes.put(nodeAccessor.getNodeId(), commitIndex);
+            }
         });
 
         otherNodes.values().forEach(nodeAccessor -> sendEntries(nodeAccessor, false));
@@ -347,10 +365,12 @@ public class NodeCore<T> {
         return id;
     }
 
-    public void setTerm(long newTerm) {
+    public boolean setTerm(long newTerm) {
         if (newTerm > currentTerm) {
             votedId = null;
             this.currentTerm = newTerm;
+            return true;
         }
+        return false;
     }
 }
