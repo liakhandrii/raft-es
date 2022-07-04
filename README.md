@@ -1,8 +1,5 @@
 # raft-es
 
-[![Build Status](https://app.travis-ci.com/liakhandrii/raft-es.svg?branch=master)](https://app.travis-ci.com/liakhandrii/raft-es)
-<img align="right" width="200" height="200" src="https://raft.github.io/logo/annie-solo.png">
-
 Raft consensus algorithm written in Java
 
 Raft is a consensus algorithm that is designed to be easy to understand. It's equivalent to Paxos in fault-tolerance and performance. The difference is that it's decomposed into relatively independent subproblems, and it cleanly addresses all major pieces needed for practical systems. We hope Raft will make consensus available to a wider audience, and that this wider audience will be able to develop a variety of higher quality consensus-based systems than are available today.
